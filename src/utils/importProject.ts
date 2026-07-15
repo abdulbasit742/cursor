@@ -9,18 +9,12 @@ import {
   inspectArchive,
   normalizeArchivePath,
   stableImportId,
-  type ImportInspection,
 } from "@/lib/workspace/importPolicy.mjs";
 
 interface SizedZipObject extends JSZipObject {
   unsafeOriginalName?: string;
   unixPermissions?: number | string | null;
   _data?: { uncompressedSize?: number };
-}
-
-export interface ImportedProject {
-  files: FileItem[];
-  report: ImportInspection;
 }
 
 function ensureFolder(level: FileItem[], pathParts: string[]): FileItem[] {
@@ -50,7 +44,7 @@ function ensureFolder(level: FileItem[], pathParts: string[]): FileItem[] {
   return currentLevel;
 }
 
-export async function importProjectZip(file: File): Promise<ImportedProject> {
+export async function importProjectZip(file: File): Promise<FileItem[]> {
   if (!(file instanceof File)) throw new TypeError("A ZIP file is required");
   if (file.size < 1 || file.size > importLimits.maxArchiveBytes) {
     throw new Error(`ZIP must be smaller than ${Math.round(importLimits.maxArchiveBytes / 1024 / 1024)} MB`);
@@ -102,5 +96,12 @@ export async function importProjectZip(file: File): Promise<ImportedProject> {
     });
   }
 
-  return { files: root, report };
+  const summary = [
+    `Import ${report.fileCount} text files (${Math.ceil(report.totalBytes / 1024)} KB)?`,
+    report.skippedCount ? `${report.skippedCount} generated, hidden, or binary entries will be skipped.` : "No entries will be skipped.",
+    `${report.scriptFiles} executable or markup files were detected.`,
+    "The current workspace will be replaced after a snapshot. Preview runs with network, forms, popups, and parent access disabled.",
+  ].join("\n\n");
+
+  return window.confirm(summary) ? root : [];
 }
