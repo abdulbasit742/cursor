@@ -4,7 +4,7 @@
 
 These instructions apply to the entire `abdulbasit742/cursor` repository.
 
-Project: **AI Code Editor**, a local-first Next.js / React / TypeScript workspace with Monaco, optional OpenAI-compatible APIs, reviewed ZIP import/export, and sandboxed HTML/CSS/JavaScript preview.
+Project: **AI Code Editor**, a local-first Next.js / React / TypeScript workspace with Monaco, optional OpenAI-compatible APIs, reviewed ZIP import/export, session-scoped source state, and sandboxed HTML/CSS/JavaScript preview.
 
 ## Required commands
 
@@ -28,6 +28,16 @@ npm run build
 - Keep rate state cardinality bounded and expired state removable.
 - Scan provider-bound source for credential-shaped content, but never present the scanner as complete secret detection.
 - Model output remains a proposal. Do not apply, execute, commit, push, publish, or run generated code without explicit review and approval.
+
+## Browser persistence boundary
+
+- Workspace files, tabs, chat messages, agent prompts, and project snapshots must remain session-scoped by default.
+- Preserve `WorkspacePersistenceBoundary`, the session-only Zustand storage adapter, and purge of legacy durable source/prompt keys.
+- Do not write raw source, prompts, credentials, or complete workspace trees to `localStorage`, IndexedDB, Cache Storage, cookies, URLs, or analytics.
+- Snapshots must reuse the reviewed export path/credential policy, remain capped at 5 and 1 MiB each, and expire after 12 hours.
+- Never silently create an incomplete snapshot by excluding sensitive/generated entries. Block the snapshot and the pending destructive action.
+- Durable retention is the reviewed safe ZIP export; adding another durable persistence mode requires a separate threat model and explicit user opt-in.
+- Treat session storage as retention minimization, not encryption.
 
 ## Workspace import boundary
 
@@ -68,5 +78,5 @@ npm run build
 - Relevant focused tests pass.
 - Both security scanners pass.
 - Typecheck and production build pass when dependencies are available.
-- No new provider endpoint, execution capability, browser permission, or persistence surface is introduced without explicit review and documentation.
+- No new provider endpoint, execution capability, browser permission, or durable persistence surface is introduced without explicit review and documentation.
 - Residual risks and deployment assumptions remain accurate.
