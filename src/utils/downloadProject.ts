@@ -2,32 +2,47 @@
 
 import JSZip from "jszip";
 import type { FileItem } from "@/store/useStore";
+import {
+  formatExportReview,
+  prepareProjectExport,
+} from "@/lib/workspace/exportPolicy.mjs";
 
-function addFilesToZip(zip: JSZip, files: FileItem[], basePath = "") {
-  files.forEach((file) => {
-    const path = basePath ? `${basePath}/${file.name}` : file.name;
-
-    if (file.type === "folder") {
-      addFilesToZip(zip, file.children || [], path);
-      return;
-    }
-
-    zip.file(path, file.content || "");
-  });
+export interface ProjectDownloadResult {
+  downloaded: boolean;
+  includedFiles: number;
+  skippedFiles: number;
 }
 
-export async function downloadProject(files: FileItem[]) {
-  const zip = new JSZip();
+export async function downloadProject(files: FileItem[]): Promise<ProjectDownloadResult> {
+  try {
+    const plan = prepareProjectExport(files);
+    if (!window.confirm(formatExportReview(plan))) {
+      return { downloaded: false, includedFiles: plan.fileCount, skippedFiles: plan.skippedCount };
+    }
 
-  addFilesToZip(zip, files);
+    const zip = new JSZip();
+    for (const file of plan.accepted) zip.file(file.path, file.content);
 
-  const blob = await zip.generateAsync({ type: "blob" });
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement("a");
+    const blob = await zip.generateAsync({
+      type: "blob",
+      compression: "DEFLATE",
+      compressionOptions: { level: 6 },
+    });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = "ai-code-editor-project.safe.zip";
+    anchor.rel = "noopener";
+    anchor.style.display = "none";
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1_000);
 
-  anchor.href = url;
-  anchor.download = "ai-code-editor-project.zip";
-  anchor.click();
-
-  URL.revokeObjectURL(url);
+    return { downloaded: true, includedFiles: plan.fileCount, skippedFiles: plan.skippedCount };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Project export failed";
+    window.alert(`Project export was blocked: ${message}`);
+    return { downloaded: false, includedFiles: 0, skippedFiles: 0 };
+  }
 }
