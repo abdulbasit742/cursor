@@ -8,10 +8,13 @@ const findings = [];
 const required = [
   "src/lib/api/requestPolicy.mjs",
   "src/lib/api/requestPolicy.d.mts",
+  "src/lib/api/projectTreePolicy.mjs",
+  "src/lib/api/projectTreePolicy.d.mts",
   "src/app/api/ai/route.ts",
   "src/app/api/agent/route.ts",
   "src/components/Preview/LivePreview.tsx",
   "tests/request-policy.test.mjs",
+  "tests/project-tree-policy.test.mjs",
 ];
 
 function report(file, rule, detail) {
@@ -24,6 +27,7 @@ for (const file of required) {
 
 if (!findings.length) {
   const policy = readFileSync(join(root, "src/lib/api/requestPolicy.mjs"), "utf8");
+  const treePolicy = readFileSync(join(root, "src/lib/api/projectTreePolicy.mjs"), "utf8");
   const ai = readFileSync(join(root, "src/app/api/ai/route.ts"), "utf8");
   const agent = readFileSync(join(root, "src/app/api/agent/route.ts"), "utf8");
   const preview = readFileSync(join(root, "src/components/Preview/LivePreview.tsx"), "utf8");
@@ -44,6 +48,16 @@ if (!findings.length) {
   ]) {
     if (!pattern.test(policy)) report("src/lib/api/requestPolicy.mjs", "policy-contract", `${label} is missing`);
   }
+  for (const [label, pattern] of [
+    ["global unique IDs", /duplicate node ID/],
+    ["case-collision rejection", /case-colliding sibling name/],
+    ["strict file shape", /File nodes cannot contain children/],
+    ["strict folder shape", /Folder nodes cannot contain file content/],
+    ["active file membership", /Active file ID must reference a canonical file node/],
+    ["bounded depth", /MAX_DEPTH\s*=\s*20/],
+  ]) {
+    if (!pattern.test(treePolicy)) report("src/lib/api/projectTreePolicy.mjs", "tree-contract", `${label} is missing`);
+  }
   for (const [file, text] of [["src/app/api/ai/route.ts", ai], ["src/app/api/agent/route.ts", agent]]) {
     for (const symbol of ["authorizeApiRequest", "enforceRateLimit", "readBoundedJson", "RequestPolicyError", "access.principal"]) {
       if (!text.includes(symbol)) report(file, "route-contract", `${symbol} is not wired`);
@@ -57,6 +71,12 @@ if (!findings.length) {
     if (!/Cache-Control/.test(text) || !/no-store/.test(text)) {
       report(file, "cache-control", "AI responses must be non-cacheable");
     }
+  }
+  for (const symbol of ["canonicalizeProjectTree", "project.files", "project.activeFileId", "ProjectTreePolicyError"]) {
+    if (!agent.includes(symbol)) report("src/app/api/agent/route.ts", "tree-wiring", `${symbol} is not wired`);
+  }
+  if (/function sanitizeFileTree/.test(agent)) {
+    report("src/app/api/agent/route.ts", "duplicate-sanitizer", "agent route must consume the canonical project tree directly");
   }
   if (!/sandbox="allow-scripts"/.test(preview) || /allow-same-origin/.test(preview)) {
     report("src/components/Preview/LivePreview.tsx", "preview-isolation", "preview must allow scripts without same-origin access");
