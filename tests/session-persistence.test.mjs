@@ -1,6 +1,10 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { createSessionOnlyStateStorage } from '../src/lib/workspace/sessionStateStorage.mjs';
+import {
+  createExpiringSessionStorage,
+  persistenceKeys,
+  prepareEditorStateForPersistence,
+} from '../src/lib/workspace/persistencePolicy.mjs';
 import {
   addProjectSnapshot,
   parseProjectSnapshots,
@@ -26,20 +30,86 @@ const safeFiles = [{
   type: 'file',
 }];
 
-test('state storage purges legacy local value and reads session', () => {
-  const session = memoryStorage({ editor: 'session' });
-  const local = memoryStorage({ editor: 'legacy' });
-  const storage = createSessionOnlyStateStorage(session, local);
+const uiState = {
+  editorSettings: { fontSize: 14 },
+  isSidebarOpen: true,
+  isChatOpen: true,
+  isAgentOpen: false,
+  isTemplatesOpen: false,
+  isHistoryOpen: false,
+  isSearchOpen: false,
+  isSourceControlOpen: false,
+  isProblemsOpen: false,
+  isSettingsOpen: false,
+  isStatsOpen: false,
+  isContextOpen: false,
+  isReadinessOpen: false,
+  isLaunchChecklistOpen: false,
+  isTerminalOpen: true,
+  isPreviewOpen: true,
+};
+
+test('expiring storage purges legacy durable keys and reads current session', () => {
+  const now = 1_000;
+  const session = memoryStorage({
+    editor: JSON.stringify({ schemaVersion: 1, expiresAt: now + 500, value: 'session' }),
+  });
+  const local = memoryStorage({
+    [persistenceKeys.legacyEditorLocal]: 'legacy-editor',
+    [persistenceKeys.legacyFsSnapshots]: 'legacy-fs',
+  });
+  const storage = createExpiringSessionStorage(session, local, () => now);
   assert.equal(storage.getItem('editor'), 'session');
-  assert.equal(local.has('editor'), false);
+  assert.equal(local.has(persistenceKeys.legacyEditorLocal), false);
+  assert.equal(local.has(persistenceKeys.legacyFsSnapshots), false);
 });
 
-test('state writes remain session-only', () => {
+test('expiring storage writes an expiry envelope to session storage only', () => {
   const session = memoryStorage();
-  const local = memoryStorage({ editor: 'legacy' });
-  createSessionOnlyStateStorage(session, local).setItem('editor', 'new');
-  assert.equal(session.getItem('editor'), 'new');
-  assert.equal(local.getItem('editor'), null);
+  const local = memoryStorage({ [persistenceKeys.legacyEditorLocal]: 'legacy' });
+  createExpiringSessionStorage(session, local, () => 10_000).setItem('editor', 'new');
+  const envelope = JSON.parse(session.getItem('editor'));
+  assert.equal(envelope.schemaVersion, 1);
+  assert.equal(envelope.value, 'new');
+  assert.ok(envelope.expiresAt > 10_000);
+  assert.equal(local.getItem(persistenceKeys.legacyEditorLocal), null);
+});
+
+test('expired or malformed session state is removed fail closed', () => {
+  const session = memoryStorage({
+    expired: JSON.stringify({ schemaVersion: 1, expiresAt: 99, value: 'old' }),
+    malformed: '{',
+  });
+  const storage = createExpiringSessionStorage(session, memoryStorage(), () => 100);
+  assert.equal(storage.getItem('expired'), null);
+  assert.equal(storage.getItem('malformed'), null);
+  assert.equal(session.has('expired'), false);
+  assert.equal(session.has('malformed'), false);
+});
+
+test('safe editor state persists workspace but excludes chat prompts', () => {
+  const persisted = prepareEditorStateForPersistence({
+    ...uiState,
+    files: safeFiles,
+    activeFile: safeFiles[0],
+    openTabs: ['1'],
+    chatMessages: [{ role: 'user', content: 'private prompt' }],
+  });
+  assert.equal(persisted.files.length, 1);
+  assert.deepEqual(persisted.openTabs, ['1']);
+  assert.equal('chatMessages' in persisted, false);
+});
+
+test('unsafe editor workspace is omitted while UI state remains usable', () => {
+  const persisted = prepareEditorStateForPersistence({
+    ...uiState,
+    files: [{ ...safeFiles[0], name: '.env', content: 'SECRET=value' }],
+    activeFile: null,
+    openTabs: [],
+    chatMessages: [],
+  });
+  assert.equal('files' in persisted, false);
+  assert.equal(persisted.isSidebarOpen, true);
 });
 
 test('snapshot accepts a bounded safe workspace', () => {
