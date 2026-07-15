@@ -27,9 +27,10 @@ test('excludes environment and private-key paths', () => {
 });
 
 test('excludes robust credential-shaped content', () => {
+  const syntheticToken = `sk-${'a'.repeat(30)}`;
   const plan = prepareProjectExport([
     file('safe.txt', 'hello'),
-    file('token.txt', 'sk-abcdefghijklmnopqrstuvwxyz123456'),
+    file('token.txt', syntheticToken),
   ]);
   assert.deepEqual(plan.accepted.map((entry) => entry.path), ['safe.txt']);
   assert.match(plan.skipped[0].reason, /^credential:/);
