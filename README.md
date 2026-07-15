@@ -12,7 +12,9 @@ A local-first, review-before-apply coding workspace built with Next.js, Monaco E
 - Requests have body, message, file, project, and per-minute limits.
 - Credential-shaped source material is blocked before an OpenAI request is made.
 - Provider output is proposed as code/diffs and requires user review before apply.
-- Workspace files, open tabs, chat messages, and agent prompt history are stored only for the current browser session; legacy durable local copies are removed at startup.
+- Workspace persistence is installed before explicit hydration; legacy durable local copies are removed without loading them.
+- A workspace is retained in `sessionStorage` for at most 12 hours only when every file passes the reviewed path, size, and credential checks. If any item is sensitive, generated, malformed, colliding, or oversized, source persistence fails closed and only low-sensitivity UI settings remain.
+- Chat messages are never included in the Zustand persisted state. Agent prompt history is session-only and separately capped.
 - Project snapshots are session-only, capped at 5, limited to 1 MiB each, and expire after 12 hours.
 - A snapshot is blocked when the workspace contains sensitive/generated paths or credential-shaped content, so destructive import/reset/agent actions do not proceed with a false rollback claim.
 - ZIP imports are preflighted before extraction and replacement: 10 MB archive, 250 entries, 200 text files, 512 KB per file, and 8 MB expanded text are hard limits.
@@ -31,7 +33,7 @@ A local-first, review-before-apply coding workspace built with Next.js, Monaco E
 - optional OpenAI chat and coding-agent plans
 - multi-file diff preview, approval queue, validation, review, confidence, session snapshots, and run history
 - bounded, reviewed ZIP import/export and local templates
-- session-scoped project, prompt, and editor state
+- bounded session-scoped project, prompt, and editor state
 
 ## Local setup
 
@@ -53,7 +55,7 @@ AGENT_PROVIDER=local
 
 The browser Origin must exactly match the loopback Host. Missing-Origin requests, cross-loopback combinations such as `localhost` → `127.0.0.1`, and production local mode are denied. Bind the development server to loopback; do not expose it as an unauthenticated network service.
 
-Closing the browser session clears the maintained workspace, chat, agent history, and snapshots. Use the reviewed safe ZIP export for deliberate durable retention. This is privacy minimization, not encrypted storage: any script running in the same origin can still access current-session data.
+Closing the browser tab/session or reaching the 12-hour TTL clears maintained persisted source and snapshots. Chat remains memory-only in the main editor store. Use the reviewed safe ZIP export for deliberate durable retention. This is privacy minimization, not encrypted storage: any script running in the same origin can still access current-session data.
 
 ## Optional OpenAI provider
 
@@ -88,7 +90,7 @@ npm run typecheck
 npm run build
 ```
 
-CI runs the same checks on Node.js 20 and 22. Regression suites cover deployment mode, Host/Origin spoofing, token principals, rate-bucket caps, ZIP import/export, session persistence, secret-aware snapshots, and preview isolation.
+CI runs the same checks on Node.js 20 and 22. Regression suites cover deployment mode, Host/Origin spoofing, token principals, rate-bucket caps, ZIP import/export, fail-closed hydration, expiring session persistence, secret-aware snapshots, and preview isolation.
 
 ## Standalone prototype
 
