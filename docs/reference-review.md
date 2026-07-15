@@ -1,12 +1,24 @@
 # Reference review
 
-Reviewed on 2026-07-15 before hardening the AI request and workspace-execution boundaries.
+Reviewed on 2026-07-15 before hardening the AI request, imported-workspace, preview, and deployment-mode boundaries.
 
 ## Continue
 
 Adopted: explicit provider configuration and a local-development-first workflow. Provider credentials remain server environment values rather than editor content or browser persistence.
 
 Not adopted: extension framework, hosted control plane, telemetry, or provider abstraction migration.
+
+## code-server
+
+Adopted: local binding and public exposure are distinct deployment decisions; internet exposure requires authentication and encryption rather than trusting request headers. Local mode is now explicit and production local access fails closed.
+
+Not adopted: terminal access, password-login UI, SSH forwarding automation, or code-server proxy/runtime architecture.
+
+## Open WebUI
+
+Adopted: a shared hosted AI surface needs real authentication and server-owned policy. The existing bearer token remains an operator-only safeguard, and documentation explicitly blocks presenting it as multi-user authentication.
+
+Not adopted: user database, OAuth, admin console, provider proxy framework, or multi-tenant migration.
 
 ## OpenHands
 
@@ -26,24 +38,14 @@ Adopted: an opened workspace can be untrusted; execution-capable surfaces need a
 
 Not adopted: extension host, Electron process model, or VS Code workspace-trust implementation.
 
-## StackBlitz WebContainer
-
-Adopted: browser code execution belongs in an isolated runtime with explicit capabilities, and imported projects require resource bounds before execution.
-
-Not adopted: WebContainer runtime, Node.js emulation, cross-origin isolation requirements, or commercial APIs.
-
-## Eclipse Theia
-
-Adopted: separate workspace/file handling from execution and backend services, and keep server endpoints behind explicit authorization/configuration boundaries.
-
-Not adopted: Theia extensions, plugin host, backend framework, or dependency stack.
-
 ## Result
 
 The existing Next.js/Monaco architecture remains. The coherent improvement combines:
 
-- local-first, origin-protected, bearer-authorized optional AI APIs;
-- request, project, file, and rate limits;
+- explicit development-only local AI mode with exact same-origin loopback checks;
+- HTTPS allowlisted Host/Origin plus bearer authorization for remote use;
+- token-derived bounded rate principals rather than forwarded-IP trust;
+- request, project, file, and rate-state limits;
 - credential-shaped source blocking before provider submission;
 - bounded ZIP preflight with path, symlink, encoding, duplicate, and expansion controls;
 - explicit user approval before workspace replacement;
