@@ -1,71 +1,83 @@
 "use client";
 
 import type { FileItem } from "@/store/useStore";
-import { flattenFiles } from "@/utils/fileTree";
+import {
+  addProjectSnapshot,
+  parseProjectSnapshots,
+  prepareProjectSnapshot,
+  type ProjectSnapshotRecord,
+  type SnapshotSource,
+} from "./snapshotPolicy.mjs";
 
-export interface ProjectSnapshot {
-  id: string;
-  label: string;
-  source: "manual" | "template" | "import" | "reset";
+export interface ProjectSnapshot extends Omit<ProjectSnapshotRecord, "files"> {
   files: FileItem[];
-  fileCount: number;
-  createdAt: string;
 }
 
-const STORAGE_KEY = "ai_code_editor_project_snapshots_v1";
+const STORAGE_KEY = "ai_code_editor_project_snapshots_v2_session";
+const LEGACY_LOCAL_KEYS = [
+  "ai_code_editor_project_snapshots_v1",
+  "cursor_ai_fs_sync_v1",
+];
 
-function createId(): string {
-  return `snapshot_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+function purgeLegacyLocalCopies(): void {
+  if (typeof window === "undefined") return;
+  for (const key of LEGACY_LOCAL_KEYS) window.localStorage.removeItem(key);
 }
 
-function cloneFiles(files: FileItem[]): FileItem[] {
-  return JSON.parse(JSON.stringify(files)) as FileItem[];
+function writeSnapshots(snapshots: ProjectSnapshot[]): void {
+  if (typeof window === "undefined") return;
+  if (snapshots.length) {
+    window.sessionStorage.setItem(STORAGE_KEY, JSON.stringify(snapshots));
+  } else {
+    window.sessionStorage.removeItem(STORAGE_KEY);
+  }
 }
 
 export function loadProjectSnapshots(): ProjectSnapshot[] {
   if (typeof window === "undefined") return [];
-
-  try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
-    return raw ? (JSON.parse(raw) as ProjectSnapshot[]) : [];
-  } catch {
-    return [];
-  }
+  purgeLegacyLocalCopies();
+  const snapshots = parseProjectSnapshots(
+    window.sessionStorage.getItem(STORAGE_KEY),
+  ) as ProjectSnapshot[];
+  writeSnapshots(snapshots);
+  return snapshots;
 }
 
 export function saveProjectSnapshot(
   files: FileItem[],
   label: string,
-  source: ProjectSnapshot["source"] = "manual"
+  source: SnapshotSource = "manual",
 ): ProjectSnapshot {
-  const snapshot: ProjectSnapshot = {
-    id: createId(),
-    label: label.trim() || "Untitled snapshot",
-    source,
-    files: cloneFiles(files),
-    fileCount: flattenFiles(files).length,
-    createdAt: new Date().toISOString(),
-  };
-
-  if (typeof window !== "undefined") {
-    const next = [snapshot, ...loadProjectSnapshots()].slice(0, 30);
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+  if (typeof window === "undefined") {
+    throw new Error("browser session storage is unavailable");
   }
+  purgeLegacyLocalCopies();
 
-  return snapshot;
+  try {
+    const snapshot = prepareProjectSnapshot({ files, label, source }) as ProjectSnapshot;
+    writeSnapshots(
+      addProjectSnapshot(loadProjectSnapshots(), snapshot) as ProjectSnapshot[],
+    );
+    return snapshot;
+  } catch (error) {
+    const reason = error instanceof Error
+      ? error.message
+      : "snapshot could not be created safely";
+    window.alert(
+      `Safety snapshot blocked: ${reason}\n\nThe pending import, reset, or agent apply was not performed. Remove sensitive/generated files or download a reviewed safe ZIP first.`,
+    );
+    throw error;
+  }
 }
 
 export function removeProjectSnapshot(id: string): ProjectSnapshot[] {
   const next = loadProjectSnapshots().filter((snapshot) => snapshot.id !== id);
-
-  if (typeof window !== "undefined") {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
-  }
-
+  writeSnapshots(next);
   return next;
 }
 
 export function clearProjectSnapshots(): void {
   if (typeof window === "undefined") return;
-  window.localStorage.removeItem(STORAGE_KEY);
+  window.sessionStorage.removeItem(STORAGE_KEY);
+  purgeLegacyLocalCopies();
 }
