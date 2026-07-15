@@ -9,10 +9,11 @@ const required = [
   'src/lib/workspace/importPolicy.mjs',
   'src/lib/workspace/exportPolicy.mjs',
   'src/lib/workspace/previewPolicy.mjs',
-  'src/lib/workspace/sessionStateStorage.mjs',
+  'src/lib/workspace/persistencePolicy.mjs',
   'src/lib/projects/snapshotPolicy.mjs',
   'src/lib/projects/projectSnapshots.ts',
   'src/components/WorkspacePersistenceBoundary.tsx',
+  'src/store/useStore.ts',
   'src/utils/importProject.ts',
   'src/utils/downloadProject.ts',
   'src/components/Preview/LivePreview.tsx',
@@ -20,6 +21,7 @@ const required = [
   'tests/export-policy.test.mjs',
   'tests/preview-policy.test.mjs',
   'tests/session-persistence.test.mjs',
+  'tests/persistence-policy.test.mjs',
 ];
 
 function report(file, rule, detail) {
@@ -37,8 +39,9 @@ if (!findings.length) {
   const importPolicy = readFileSync(join(root, 'src/lib/workspace/importPolicy.mjs'), 'utf8');
   const exporter = readFileSync(join(root, 'src/utils/downloadProject.ts'), 'utf8');
   const exportPolicy = readFileSync(join(root, 'src/lib/workspace/exportPolicy.mjs'), 'utf8');
-  const sessionStoragePolicy = readFileSync(join(root, 'src/lib/workspace/sessionStateStorage.mjs'), 'utf8');
+  const persistencePolicy = readFileSync(join(root, 'src/lib/workspace/persistencePolicy.mjs'), 'utf8');
   const persistenceBoundary = readFileSync(join(root, 'src/components/WorkspacePersistenceBoundary.tsx'), 'utf8');
+  const store = readFileSync(join(root, 'src/store/useStore.ts'), 'utf8');
   const snapshotPolicy = readFileSync(join(root, 'src/lib/projects/snapshotPolicy.mjs'), 'utf8');
   const snapshots = readFileSync(join(root, 'src/lib/projects/projectSnapshots.ts'), 'utf8');
   const agentHistory = readFileSync(join(root, 'src/lib/agent/agentHistory.ts'), 'utf8');
@@ -65,15 +68,33 @@ if (!findings.length) {
     report('src/utils/downloadProject.ts', 'raw-export', 'raw recursive ZIP export must not bypass the reviewed plan');
   }
 
-  for (const token of ['sessionStorage.getItem', 'sessionStorage.setItem', 'localStorage.removeItem']) {
-    if (!sessionStoragePolicy.includes(token)) report('src/lib/workspace/sessionStateStorage.mjs', 'session-storage', `missing ${token}`);
+  for (const token of [
+    'prepareProjectExport',
+    'maxSerializedBytes: 4 * 1024 * 1024',
+    'ttlMs: 12 * 60 * 60 * 1000',
+    'workspace contains sensitive',
+    'createExpiringSessionStorage',
+    'legacyEditorLocal',
+  ]) {
+    if (!persistencePolicy.includes(token)) report('src/lib/workspace/persistencePolicy.mjs', 'persistence-boundary', `missing ${token}`);
   }
-  for (const key of ['ai-code-editor-storage', 'cursor_ai_agent_history_v1', 'cursor_ai_file_history_v1']) {
+  for (const token of ['skipHydration: true', 'prepareEditorStateForPersistence', 'ai-code-editor-private-session-v2']) {
+    if (!store.includes(token)) report('src/store/useStore.ts', 'store-persistence', `missing ${token}`);
+  }
+  const partializeSection = store.slice(store.indexOf('partialize:'));
+  if (/chatMessages\s*:/.test(partializeSection)) {
+    report('src/store/useStore.ts', 'chat-persistence', 'chat messages must not be included in persisted state');
+  }
+  if (!persistenceBoundary.includes('createExpiringSessionStorage') || !persistenceBoundary.includes('useStore.persist.rehydrate()')) {
+    report('src/components/WorkspacePersistenceBoundary.tsx', 'state-routing', 'reviewed session storage must be installed before explicit hydration');
+  }
+  if (/useStore\.setState\(\{ \.\.\.useStore\.getState\(\) \}\)/.test(persistenceBoundary)) {
+    report('src/components/WorkspacePersistenceBoundary.tsx', 'pre-hydration-write', 'boundary must not write initial state before hydration');
+  }
+  for (const key of ['legacyEditorLocal', 'cursor_ai_agent_history_v1', 'cursor_ai_file_history_v1']) {
     if (!persistenceBoundary.includes(key)) report('src/components/WorkspacePersistenceBoundary.tsx', 'legacy-purge', `missing legacy purge for ${key}`);
   }
-  if (!persistenceBoundary.includes('useStore.persist.setOptions') || !persistenceBoundary.includes('createSessionOnlyStateStorage')) {
-    report('src/components/WorkspacePersistenceBoundary.tsx', 'state-routing', 'Zustand persistence must be routed to session storage');
-  }
+
   for (const token of ['maxSnapshots: 5', 'maxSnapshotBytes: 1024 * 1024', 'ttlMs: 12 * 60 * 60 * 1000', 'prepareProjectExport', 'snapshot blocked']) {
     if (!snapshotPolicy.includes(token)) report('src/lib/projects/snapshotPolicy.mjs', 'snapshot-boundary', `missing ${token}`);
   }
