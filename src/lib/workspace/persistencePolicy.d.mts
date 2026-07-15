@@ -28,7 +28,7 @@ export const persistenceKeys: Readonly<{
 
 export function prepareWorkspacePersistence<T extends WorkspaceNode[]>(files: T): PersistenceDecision<T>;
 export function prepareVirtualFSPersistence<T>(state: T): PersistenceDecision<T>;
-export function prepareEditorStateForPersistence<T extends Record<string, unknown>>(state: T): Partial<T>;
+export function prepareEditorStateForPersistence<T extends object>(state: T): Partial<T>;
 
 export interface StringStorage {
   getItem(name: string): string | null;
