@@ -23,6 +23,21 @@ function json(body: unknown, status = 200) {
   });
 }
 
+function sanitizeFileTree(nodes: unknown[]): FileItem[] {
+  return nodes.map((value) => {
+    const node = value as Record<string, unknown>;
+    return {
+      id: String(node.id),
+      name: String(node.name),
+      language: String(node.language || "plaintext"),
+      content: String(node.content || ""),
+      type: node.type === "folder" ? "folder" : "file",
+      children: Array.isArray(node.children) ? sanitizeFileTree(node.children) : undefined,
+      isOpen: Boolean(node.isOpen),
+    };
+  });
+}
+
 export async function POST(req: NextRequest) {
   try {
     const access = authorizeApiRequest({
@@ -53,7 +68,7 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const projectFiles = body.files as FileItem[];
+    const projectFiles = sanitizeFileTree(body.files);
     const context = createAgentFileContext({
       files: projectFiles,
       activeFileId: body.activeFileId,
