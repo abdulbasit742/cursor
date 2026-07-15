@@ -1,60 +1,26 @@
 "use client";
 
-import JSZip from "jszip";
+import JSZip, { type JSZipObject } from "jszip";
 import type { FileItem } from "@/store/useStore";
 import { getLanguageFromName } from "@/utils/language";
+import {
+  decodeImportedText,
+  importLimits,
+  inspectArchive,
+  normalizeArchivePath,
+  stableImportId,
+  type ImportInspection,
+} from "@/lib/workspace/importPolicy.mjs";
 
-const ignoredPathSegments = new Set([
-  "",
-  "__macosx",
-  "node_modules",
-  ".next",
-  ".git",
-  ".tools",
-  "dist",
-  "out",
-]);
-
-const binaryExtensions = new Set([
-  ".png",
-  ".jpg",
-  ".jpeg",
-  ".gif",
-  ".webp",
-  ".ico",
-  ".pdf",
-  ".zip",
-  ".exe",
-  ".dll",
-  ".wasm",
-  ".ttf",
-  ".otf",
-  ".woff",
-  ".woff2",
-]);
-
-function slugId(value: string): string {
-  return value
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
+interface SizedZipObject extends JSZipObject {
+  unsafeOriginalName?: string;
+  unixPermissions?: number | string | null;
+  _data?: { uncompressedSize?: number };
 }
 
-function getExtension(path: string): string {
-  const index = path.lastIndexOf(".");
-  return index === -1 ? "" : path.slice(index).toLowerCase();
-}
-
-function shouldImportPath(path: string): boolean {
-  const normalized = path.replace(/\\/g, "/").toLowerCase();
-  const parts = normalized.split("/");
-
-  if (parts.some((part) => ignoredPathSegments.has(part))) return false;
-  if (parts.some((part) => part.startsWith(".")) && !normalized.endsWith(".env.example")) {
-    return false;
-  }
-
-  return !binaryExtensions.has(getExtension(normalized));
+export interface ImportedProject {
+  files: FileItem[];
+  report: ImportInspection;
 }
 
 function ensureFolder(level: FileItem[], pathParts: string[]): FileItem[] {
@@ -66,7 +32,7 @@ function ensureFolder(level: FileItem[], pathParts: string[]): FileItem[] {
 
     if (!folder) {
       folder = {
-        id: `import-folder-${slugId(folderPath)}`,
+        id: stableImportId(folderPath, "folder"),
         name: part,
         language: "plaintext",
         content: "",
@@ -74,7 +40,6 @@ function ensureFolder(level: FileItem[], pathParts: string[]): FileItem[] {
         isOpen: index < 2,
         children: [],
       };
-
       currentLevel.push(folder);
     }
 
@@ -85,25 +50,51 @@ function ensureFolder(level: FileItem[], pathParts: string[]): FileItem[] {
   return currentLevel;
 }
 
-export async function importProjectZip(file: File): Promise<FileItem[]> {
-  const zip = await JSZip.loadAsync(file);
-  const root: FileItem[] = [];
-  const entries = Object.values(zip.files)
-    .filter((entry) => !entry.dir && shouldImportPath(entry.name))
-    .sort((a, b) => a.name.localeCompare(b.name));
+export async function importProjectZip(file: File): Promise<ImportedProject> {
+  if (!(file instanceof File)) throw new TypeError("A ZIP file is required");
+  if (file.size < 1 || file.size > importLimits.maxArchiveBytes) {
+    throw new Error(`ZIP must be smaller than ${Math.round(importLimits.maxArchiveBytes / 1024 / 1024)} MB`);
+  }
 
+  const zip = await JSZip.loadAsync(file, {
+    checkCRC32: true,
+    createFolders: false,
+  });
+  const entries = Object.values(zip.files) as SizedZipObject[];
+  const report = inspectArchive({
+    archiveBytes: file.size,
+    entries: entries.map((entry) => ({
+      name: entry.unsafeOriginalName || entry.name,
+      dir: entry.dir,
+      uncompressedSize: entry._data?.uncompressedSize,
+      unixPermissions: entry.unixPermissions,
+    })),
+  });
+
+  const accepted = new Set(report.accepted.map((entry) => entry.path));
+  const entryByPath = new Map<string, SizedZipObject>();
   for (const entry of entries) {
-    const content = await entry.async("string");
-    const parts = entry.name.replace(/\\/g, "/").split("/").filter(Boolean);
-    const fileName = parts.pop();
+    if (entry.dir) continue;
+    const path = normalizeArchivePath(entry.unsafeOriginalName || entry.name);
+    if (accepted.has(path)) entryByPath.set(path, entry);
+  }
 
+  const root: FileItem[] = [];
+  for (const descriptor of report.accepted) {
+    const entry = entryByPath.get(descriptor.path);
+    if (!entry) throw new Error(`ZIP entry disappeared during import: ${descriptor.path}`);
+    const bytes = await entry.async("uint8array");
+    if (bytes.byteLength !== descriptor.size) {
+      throw new Error(`ZIP size mismatch for ${descriptor.path}`);
+    }
+    const content = decodeImportedText(bytes, descriptor.path);
+    const parts = descriptor.path.split("/");
+    const fileName = parts.pop();
     if (!fileName) continue;
 
     const targetLevel = ensureFolder(root, parts);
-    const fullPath = [...parts, fileName].join("/");
-
     targetLevel.push({
-      id: `import-file-${slugId(fullPath)}`,
+      id: stableImportId(descriptor.path, "file"),
       name: fileName,
       language: getLanguageFromName(fileName),
       content,
@@ -111,5 +102,5 @@ export async function importProjectZip(file: File): Promise<FileItem[]> {
     });
   }
 
-  return root;
+  return { files: root, report };
 }
