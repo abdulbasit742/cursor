@@ -10,6 +10,7 @@ const required = [
   'src/lib/workspace/exportPolicy.mjs',
   'src/lib/workspace/previewPolicy.mjs',
   'src/lib/workspace/persistencePolicy.mjs',
+  'src/lib/workspace/persistencePolicy.d.mts',
   'src/lib/projects/snapshotPolicy.mjs',
   'src/lib/projects/projectSnapshots.ts',
   'src/components/WorkspacePersistenceBoundary.tsx',
@@ -85,11 +86,16 @@ if (!findings.length) {
   if (/chatMessages\s*:/.test(partializeSection)) {
     report('src/store/useStore.ts', 'chat-persistence', 'chat messages must not be included in persisted state');
   }
-  if (!persistenceBoundary.includes('createExpiringSessionStorage') || !persistenceBoundary.includes('useStore.persist.rehydrate()')) {
-    report('src/components/WorkspacePersistenceBoundary.tsx', 'state-routing', 'reviewed session storage must be installed before explicit hydration');
+  for (const token of ['createExpiringSessionStorage', 'useStore.persist.rehydrate()', 'setStatus("blocked")', 'Private session storage is unavailable']) {
+    if (!persistenceBoundary.includes(token)) {
+      report('src/components/WorkspacePersistenceBoundary.tsx', 'state-routing', `missing ${token}`);
+    }
   }
   if (/useStore\.setState\(\{ \.\.\.useStore\.getState\(\) \}\)/.test(persistenceBoundary)) {
     report('src/components/WorkspacePersistenceBoundary.tsx', 'pre-hydration-write', 'boundary must not write initial state before hydration');
+  }
+  if (/catch\([\s\S]{0,500}setStatus\("ready"\)/.test(persistenceBoundary)) {
+    report('src/components/WorkspacePersistenceBoundary.tsx', 'fail-open-storage', 'storage setup failure must block the editor');
   }
   for (const key of ['legacyEditorLocal', 'cursor_ai_agent_history_v1', 'cursor_ai_file_history_v1']) {
     if (!persistenceBoundary.includes(key)) report('src/components/WorkspacePersistenceBoundary.tsx', 'legacy-purge', `missing legacy purge for ${key}`);
