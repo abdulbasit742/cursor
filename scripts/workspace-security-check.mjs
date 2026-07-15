@@ -9,6 +9,7 @@ const required = [
   'src/lib/workspace/importPolicy.mjs',
   'src/lib/workspace/exportPolicy.mjs',
   'src/lib/workspace/previewPolicy.mjs',
+  'src/lib/workspace/previewPolicy.d.mts',
   'src/lib/workspace/persistencePolicy.mjs',
   'src/lib/workspace/persistencePolicy.d.mts',
   'src/lib/projects/snapshotPolicy.mjs',
@@ -36,6 +37,7 @@ for (const file of required) {
 if (!findings.length) {
   const preview = readFileSync(join(root, 'src/components/Preview/LivePreview.tsx'), 'utf8');
   const previewPolicy = readFileSync(join(root, 'src/lib/workspace/previewPolicy.mjs'), 'utf8');
+  const previewTypes = readFileSync(join(root, 'src/lib/workspace/previewPolicy.d.mts'), 'utf8');
   const importer = readFileSync(join(root, 'src/utils/importProject.ts'), 'utf8');
   const importPolicy = readFileSync(join(root, 'src/lib/workspace/importPolicy.mjs'), 'utf8');
   const exporter = readFileSync(join(root, 'src/utils/downloadProject.ts'), 'utf8');
@@ -48,12 +50,35 @@ if (!findings.length) {
   const agentHistory = readFileSync(join(root, 'src/lib/agent/agentHistory.ts'), 'utf8');
   const standalone = readFileSync(join(root, 'FREE_LOCAL_EDITOR.html'), 'utf8');
 
-  if (!/sandbox="allow-scripts"/.test(preview) || /allow-same-origin|allow-forms|allow-popups|allow-top-navigation/.test(preview)) {
-    report('src/components/Preview/LivePreview.tsx', 'iframe-sandbox', 'preview must use scripts-only opaque-origin sandbox');
+  if (!/sandbox=\{scriptsEnabled \? "allow-scripts" : ""\}/.test(preview)) {
+    report('src/components/Preview/LivePreview.tsx', 'iframe-sandbox', 'preview must grant scripts only after current-content consent');
   }
-  for (const directive of ["default-src 'none'", "connect-src 'none'", "form-action 'none'", "object-src 'none'", "base-uri 'none'"]) {
+  if (/allow-same-origin|allow-forms|allow-popups|allow-top-navigation|allow-downloads/.test(preview)) {
+    report('src/components/Preview/LivePreview.tsx', 'iframe-sandbox', 'preview grants an unsafe sandbox capability');
+  }
+  for (const token of ['window.confirm(', 'createPreviewConsent', 'isPreviewConsentCurrent', 'Scripts paused', 'Stop scripts']) {
+    if (!preview.includes(token)) report('src/components/Preview/LivePreview.tsx', 'preview-consent', `missing ${token}`);
+  }
+  for (const directive of ["default-src 'none'", "connect-src 'none'", "form-action 'none'", "object-src 'none'", "base-uri 'none'", "script-src 'none'"]) {
     if (!previewPolicy.includes(directive)) report('src/lib/workspace/previewPolicy.mjs', 'preview-csp', `missing ${directive}`);
   }
+  for (const token of [
+    'MAX_PREVIEW_SCRIPT_BYTES = 256 * 1024',
+    'sanitizePreviewHtml',
+    'stripInlineEventHandlers',
+    'stripOutboundUrlAttributes',
+    'createPreviewConsent',
+    'isPreviewConsentCurrent',
+    'inspectPreviewJavaScript',
+  ]) {
+    if (!previewPolicy.includes(token)) {
+      report('src/lib/workspace/previewPolicy.mjs', 'preview-policy', `missing ${token}`);
+    }
+  }
+  for (const token of ['PreviewConsent', 'PreviewScriptStatus', 'MAX_PREVIEW_SCRIPT_BYTES']) {
+    if (!previewTypes.includes(token)) report('src/lib/workspace/previewPolicy.d.mts', 'preview-types', `missing ${token}`);
+  }
+
   if (!/window\.confirm\(summary\)/.test(importer)) report('src/utils/importProject.ts', 'missing-review', 'ZIP replacement needs explicit user review');
   for (const token of ['maxArchiveBytes', 'maxEntries', 'maxFiles', 'maxFileBytes', 'maxTotalBytes', 'case-colliding', 'symbolic links']) {
     if (!importPolicy.includes(token)) report('src/lib/workspace/importPolicy.mjs', 'import-boundary', `missing ${token} control`);
@@ -63,7 +88,7 @@ if (!findings.length) {
     report('src/utils/downloadProject.ts', 'missing-export-review', 'ZIP export needs explicit summary confirmation');
   }
   for (const token of ['maxFiles', 'maxFileBytes', 'maxTotalBytes', 'generated-or-vendored', 'sensitive-path', 'credential:', 'case-colliding']) {
-    if (!exportPolicy.includes(token)) report('src/lib/workspace/exportPolicy.mjs', 'export-boundary', `missing ${token} control`);
+    if (!exportPolicy.includes(token)) report('src/lib/workspace/exportPolicy.mjs', 'export-boundary', `missing ${token}`);
   }
   if (/addFilesToZip\s*\(/.test(exporter)) {
     report('src/utils/downloadProject.ts', 'raw-export', 'raw recursive ZIP export must not bypass the reviewed plan');
