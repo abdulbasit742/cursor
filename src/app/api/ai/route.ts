@@ -27,8 +27,7 @@ export async function POST(req: NextRequest) {
       authorization: req.headers.get("authorization"),
       env: process.env,
     });
-    const clientKey = `${access.mode}:${req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "direct"}`;
-    enforceRateLimit(clientKey);
+    enforceRateLimit(`${access.principal}:chat`);
 
     const body = validateChatPayload(await readBoundedJson(req));
     const useRemoteProvider = Boolean(process.env.OPENAI_API_KEY);
