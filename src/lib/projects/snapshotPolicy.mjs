@@ -22,9 +22,20 @@ function randomHex(randomBytes) {
   return [...bytes].map((byte) => byte.toString(16).padStart(2, '0')).join('');
 }
 
+function safeSnapshotPlan(files) {
+  try {
+    return prepareProjectExport(files);
+  } catch (error) {
+    const reason = error instanceof Error
+      ? error.message
+      : 'workspace could not be validated';
+    throw new Error(`snapshot blocked: ${reason}`);
+  }
+}
+
 export function prepareProjectSnapshot({ files, label, source = 'manual', now, randomBytes }) {
   if (!sources.has(source)) throw new TypeError('snapshot source is invalid');
-  const plan = prepareProjectExport(files);
+  const plan = safeSnapshotPlan(files);
   if (plan.skippedCount) {
     const preview = plan.skipped.slice(0, 3).map((entry) => entry.path).join(', ');
     throw new Error(
