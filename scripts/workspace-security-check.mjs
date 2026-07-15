@@ -1,0 +1,67 @@
+#!/usr/bin/env node
+import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
+import { join, relative } from 'node:path';
+import process from 'node:process';
+
+const root = process.cwd();
+const findings = [];
+const required = [
+  'src/lib/workspace/importPolicy.mjs',
+  'src/lib/workspace/previewPolicy.mjs',
+  'src/utils/importProject.ts',
+  'src/components/Preview/LivePreview.tsx',
+  'tests/import-policy.test.mjs',
+  'tests/preview-policy.test.mjs',
+];
+
+function report(file, rule, detail) {
+  findings.push({ file, rule, detail });
+}
+
+for (const file of required) {
+  if (!existsSync(join(root, file))) report(file, 'missing-file', 'required workspace trust file is missing');
+}
+
+if (!findings.length) {
+  const preview = readFileSync(join(root, 'src/components/Preview/LivePreview.tsx'), 'utf8');
+  const previewPolicy = readFileSync(join(root, 'src/lib/workspace/previewPolicy.mjs'), 'utf8');
+  const importer = readFileSync(join(root, 'src/utils/importProject.ts'), 'utf8');
+  const importPolicy = readFileSync(join(root, 'src/lib/workspace/importPolicy.mjs'), 'utf8');
+  const standalone = readFileSync(join(root, 'FREE_LOCAL_EDITOR.html'), 'utf8');
+
+  if (!/sandbox="allow-scripts"/.test(preview) || /allow-same-origin|allow-forms|allow-popups|allow-top-navigation/.test(preview)) {
+    report('src/components/Preview/LivePreview.tsx', 'iframe-sandbox', 'preview must use scripts-only opaque-origin sandbox');
+  }
+  for (const directive of ["default-src 'none'", "connect-src 'none'", "form-action 'none'", "object-src 'none'", "base-uri 'none'"]) {
+    if (!previewPolicy.includes(directive)) report('src/lib/workspace/previewPolicy.mjs', 'preview-csp', `missing ${directive}`);
+  }
+  if (!/window\.confirm\(summary\)/.test(importer)) report('src/utils/importProject.ts', 'missing-review', 'ZIP replacement needs explicit user review');
+  for (const token of ['maxArchiveBytes', 'maxEntries', 'maxFiles', 'maxFileBytes', 'maxTotalBytes', 'case-colliding', 'symbolic links']) {
+    if (!importPolicy.includes(token)) report('src/lib/workspace/importPolicy.mjs', 'import-boundary', `missing ${token} control`);
+  }
+  if (!/Standalone editor retired/.test(standalone) || /srcdoc|eval\s*\(|new\s+Function/.test(standalone)) {
+    report('FREE_LOCAL_EDITOR.html', 'legacy-runtime', 'standalone file must remain a non-executing retirement notice');
+  }
+}
+
+function walk(directory) {
+  for (const entry of readdirSync(directory, { withFileTypes: true })) {
+    if (['.git', 'node_modules', '.next', 'dist', 'out'].includes(entry.name)) continue;
+    const path = join(directory, entry.name);
+    if (entry.isDirectory()) walk(path);
+    else if (statSync(path).size <= 1_500_000) {
+      const text = readFileSync(path, 'utf8');
+      if (/-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----/.test(text)) report(relative(root, path), 'private-key', 'private key found');
+      if (/\bsk-[A-Za-z0-9_-]{20,}\b/.test(text)) report(relative(root, path), 'api-key', 'credential-shaped API key found');
+    }
+  }
+}
+
+walk(root);
+
+if (findings.length) {
+  console.error(`Workspace security check failed with ${findings.length} finding(s):`);
+  for (const finding of findings) console.error(`- ${finding.file} [${finding.rule}]: ${finding.detail}`);
+  process.exit(1);
+}
+console.log('Workspace security check passed.');
