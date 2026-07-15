@@ -14,6 +14,7 @@
 - Imported projects replaced the workspace without an explicit trust review.
 - Project export recursively included every workspace file without size limits, secret filtering, or user review.
 - Previewed JavaScript could make outbound requests because the iframe had no restrictive document CSP.
+- Preview JavaScript previously started automatically when the preview panel opened.
 - The single-file fallback executed unreviewed project code outside the maintained trust controls.
 - Zustand persisted the complete workspace, open files, and chat indefinitely in `localStorage`.
 - Legacy Zustand state could hydrate before a client-side storage adapter was installed.
@@ -44,8 +45,11 @@
 - A summary shows imported/skipped/script file counts before the user approves workspace replacement.
 - ZIP export caps: 200 files, 512 KB per file, 8 MB total text, and depth 20.
 - Export rejects unsafe or case-colliding paths, excludes generated/vendor directories and sensitive filenames, scans robust credential patterns, and always requires summary confirmation.
-- Preview iframe uses only `sandbox="allow-scripts"`, without same-origin/forms/popups/navigation privileges.
-- Preview CSP denies all by default, including connections, forms, frames, objects, and base URLs; only inline preview code and data/blob media are allowed.
+- Preview starts in static HTML/CSS mode with scripts disabled and a default-deny document policy.
+- HTML script elements, inline handlers, refresh metadata, and outbound URL attributes are removed before preview rendering.
+- Standalone preview JavaScript is limited to 256 KiB and requires explicit approval for the exact current HTML and JavaScript.
+- Editing either approved file removes approval automatically; the operator can also stop scripts immediately.
+- Approved preview code receives only the scripts capability in an opaque-origin iframe. Same-origin access, forms, popups, downloads, external connections, and parent access remain unavailable.
 - Provider output remains selected/reviewed before apply and a safe project snapshot is required before changes.
 - Sanitized public errors, no-store responses, Node tests, source scanners, typecheck, and production build in CI.
 
@@ -60,4 +64,5 @@
 - A secret not recognized by pattern detection can still be retained for the current session; explicit safe export and manual review remain required for durable sharing.
 - Other low-sensitivity convenience modules may retain UI metadata in browser storage; they must not be expanded to raw source, prompts, credentials, or regulated data without a separate review.
 - JSZip import/export processing still allocates accepted entries in the browser. Size caps reduce risk but do not create a separate process or memory sandbox.
-- Preview code can consume CPU in the browser tab. Add a worker/process timeout or disposable runtime before supporting hostile multi-user projects.
+- The preview markup filter is a narrow defense for this renderer, not a general-purpose HTML sanitizer.
+- Approved preview code can still consume CPU or memory and make the iframe unresponsive. A disposable worker or process boundary is required before accepting adversarial shared projects.
