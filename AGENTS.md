@@ -4,7 +4,7 @@
 
 These instructions apply to the entire `abdulbasit742/cursor` repository.
 
-Project: **AI Code Editor**, a local-first Next.js / React / TypeScript workspace with Monaco, optional OpenAI-compatible APIs, ZIP import, and sandboxed HTML/CSS/JavaScript preview.
+Project: **AI Code Editor**, a local-first Next.js / React / TypeScript workspace with Monaco, optional OpenAI-compatible APIs, reviewed ZIP import/export, and sandboxed HTML/CSS/JavaScript preview.
 
 ## Required commands
 
@@ -37,6 +37,15 @@ npm run build
 - Skip populated environment files, hidden/sensitive files, generated dependencies, build output, and binary content.
 - Require a visible import summary and explicit user confirmation before replacing the current workspace.
 - Do not weaken limits through environment variables or query parameters.
+
+## Workspace export boundary
+
+- Preserve hard file-count, depth, per-file, and total-text caps before creating a ZIP.
+- Reject unsafe and case-colliding paths.
+- Exclude generated/vendor folders, populated environment files, private-key-like paths, and robust credential-pattern matches.
+- Always show a summary and require explicit confirmation before download, even when no sensitive item is detected.
+- Keep secret detection best-effort; never describe an export as guaranteed secret-free.
+- Do not reintroduce a raw recursive `zip.file(...)` path that bypasses `exportPolicy.mjs`.
 
 ## Preview boundary
 
