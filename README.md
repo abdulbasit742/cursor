@@ -13,8 +13,10 @@ A local-first, review-before-apply coding workspace built with Next.js, Monaco E
 - Credential-shaped source material is blocked before an OpenAI request is made.
 - Provider output is proposed as code/diffs and requires user review before apply.
 - ZIP imports are preflighted before extraction and replacement: 10 MB archive, 250 entries, 200 text files, 512 KB per file, and 8 MB expanded text are hard limits.
-- Absolute paths, traversal, case collisions, symlinks, hidden secrets, generated dependencies, binary files, invalid UTF-8, and NUL-containing files are rejected or skipped.
+- Absolute paths, traversal, case collisions, symlinks, hidden secrets, generated dependencies, binary files, invalid UTF-8, and NUL-containing files are rejected or skipped during import.
 - The user sees an import summary and must explicitly approve replacing the current workspace.
+- ZIP exports are preflighted before generation: 200 files, 512 KB per file, 8 MB total text, and depth 20 are hard limits.
+- Export rejects unsafe/case-colliding paths, excludes generated/vendor folders and sensitive filenames, scans robust credential patterns, and requires an explicit summary confirmation.
 - Live preview uses an opaque-origin `sandbox="allow-scripts"` iframe. Its CSP disables outbound connections, forms, frames, objects, base URLs, popups, and parent access.
 - AI responses and preview documents are not cached, and unexpected server errors are not returned to clients.
 
@@ -25,7 +27,7 @@ A local-first, review-before-apply coding workspace built with Next.js, Monaco E
 - local AI assistant fallback
 - optional OpenAI chat and coding-agent plans
 - multi-file diff preview, approval queue, validation, review, confidence, snapshots, and run history
-- bounded ZIP import/export and local templates
+- bounded, reviewed ZIP import/export and local templates
 - persistent editor settings and local project state
 
 ## Local setup
@@ -56,7 +58,7 @@ OPENAI_MODEL=gpt-4o-mini
 AGENT_PROVIDER=auto
 ```
 
-Do not paste secrets into editor files. The detection gate covers common credential formats but is not a substitute for reviewing exactly what code is sent to a provider.
+Do not paste secrets into editor files. Detection gates cover common credential formats but cannot identify every secret. Review exactly what code is sent to a provider and every export summary before sharing a ZIP.
 
 ## Public deployment boundary
 
@@ -81,11 +83,11 @@ npm run typecheck
 npm run build
 ```
 
-CI runs the same checks on Node.js 20 and 22. The request-policy suite includes explicit deployment-mode, Host/Origin spoofing, token-principal, and rate-bucket-cap regression cases.
+CI runs the same checks on Node.js 20 and 22. Regression suites cover deployment mode, Host/Origin spoofing, token principals, rate-bucket caps, ZIP import, project export, and preview isolation.
 
 ## Standalone prototype
 
-`FREE_LOCAL_EDITOR.html` is now a non-executing retirement notice. The older single-file editor was removed because it could not enforce the maintained application's ZIP preflight, API authorization, or network-denied preview boundary.
+`FREE_LOCAL_EDITOR.html` is now a non-executing retirement notice. The older single-file editor was removed because it could not enforce the maintained application's ZIP preflight, API authorization, reviewed export, or network-denied preview boundary.
 
 ## Documentation
 
