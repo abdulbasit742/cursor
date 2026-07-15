@@ -22,13 +22,15 @@ A local-first, review-before-apply coding workspace built with Next.js, Monaco E
 - The user sees an import summary and must explicitly approve replacing the current workspace.
 - ZIP exports are preflighted before generation: 200 files, 512 KB per file, 8 MB total text, and depth 20 are hard limits.
 - Export rejects unsafe/case-colliding paths, excludes generated/vendor folders and sensitive filenames, scans robust credential patterns, and requires an explicit summary confirmation.
-- Live preview uses an opaque-origin `sandbox="allow-scripts"` iframe. Its CSP disables outbound connections, forms, frames, objects, base URLs, popups, and parent access.
+- Preview starts in static HTML/CSS mode with scripts disabled. HTML script tags, inline event handlers, refresh redirects, and outbound URL attributes are removed.
+- Standalone JavaScript is capped at 256 KiB and requires explicit confirmation for the exact current HTML/JS pair. Editing either file revokes consent immediately.
+- Approved code runs only in an opaque-origin `allow-scripts` iframe. Its CSP still blocks network connections, forms, frames, objects, base URLs, popups, downloads, and parent access.
 - AI responses and preview documents are not cached, and unexpected server errors are not returned to clients.
 
 ## Features
 
 - Monaco editor, file explorer, tabs, search, diagnostics, stats, and local source-control checkpoints
-- isolated HTML/CSS/JavaScript live preview with network disabled
+- static-by-default isolated preview with explicit, revocable JavaScript execution
 - local AI assistant fallback
 - optional OpenAI chat and coding-agent plans
 - multi-file diff preview, approval queue, validation, review, confidence, session snapshots, and run history
@@ -90,7 +92,7 @@ npm run typecheck
 npm run build
 ```
 
-CI runs the same checks on Node.js 20 and 22. Regression suites cover deployment mode, Host/Origin spoofing, token principals, rate-bucket caps, ZIP import/export, fail-closed hydration, expiring session persistence, secret-aware snapshots, and preview isolation.
+CI runs the same checks on Node.js 20 and 22. Regression suites cover deployment mode, Host/Origin spoofing, token principals, rate-bucket caps, ZIP import/export, fail-closed hydration, expiring session persistence, secret-aware snapshots, preview sanitization, exact-content execution consent, and sandbox isolation.
 
 ## Standalone prototype
 
