@@ -4,9 +4,11 @@ A local-first, review-before-apply coding workspace built with Next.js, Monaco E
 
 ## Safety model
 
-- The editor and local coding agent work on loopback without a provider key.
-- `/api/ai` and `/api/agent` are loopback-only by default.
-- Public AI API access requires explicit enablement, an allowlisted HTTPS origin, and a bearer token of at least 24 characters.
+- Local browser AI access is an explicit development-only mode, not something inferred from a spoofable `Host` header.
+- Local requests require `EDITOR_LOCAL_AI_ENABLED=true`, non-production runtime, and an exact loopback Host/Origin match.
+- Shared/public AI access requires explicit enablement, a matching allowlisted HTTPS origin/host, and a bearer token of at least 24 characters.
+- Rate limits use an authorized local-origin or hashed-token principal; untrusted forwarded-IP headers are ignored.
+- The in-memory rate state is capped at 256 principals and expired buckets are removed.
 - Requests have body, message, file, project, and per-minute limits.
 - Credential-shaped source material is blocked before an OpenAI request is made.
 - Provider output is proposed as code/diffs and requires user review before apply.
@@ -36,7 +38,15 @@ cp .env.example .env.local
 npm run dev
 ```
 
-Open `http://localhost:3000`. Leave `OPENAI_API_KEY` blank and keep `AGENT_PROVIDER=local` for the no-provider mode.
+Open `http://localhost:3000`. The template explicitly enables local AI for `next dev`:
+
+```dotenv
+EDITOR_LOCAL_AI_ENABLED=true
+OPENAI_API_KEY=
+AGENT_PROVIDER=local
+```
+
+The browser Origin must exactly match the loopback Host. Missing-Origin requests, cross-loopback combinations such as `localhost` → `127.0.0.1`, and production local mode are denied. Bind the development server to loopback; do not expose it as an unauthenticated network service.
 
 ## Optional OpenAI provider
 
@@ -58,7 +68,9 @@ EDITOR_ALLOWED_ORIGINS=https://editor.example.com
 EDITOR_API_TOKEN=use-a-random-secret-with-at-least-24-characters
 ```
 
-Public clients must send `Authorization: Bearer <EDITOR_API_TOKEN>` over HTTPS. The current browser UI is intentionally optimized for local use and does not persist an operator token. Add a proper authenticated server session before offering shared hosted access.
+The request Host must match the allowlisted Origin host, and non-loopback origins must use HTTPS. Public clients must send `Authorization: Bearer <EDITOR_API_TOKEN>`. The current browser UI is intentionally optimized for local development and does not persist or send an operator token. Add a proper authenticated server session before offering shared hosted access.
+
+Do not set `EDITOR_LOCAL_AI_ENABLED=true` as a substitute for hosted authentication. Local mode is denied when `NODE_ENV=production`.
 
 ## Verification
 
@@ -69,7 +81,7 @@ npm run typecheck
 npm run build
 ```
 
-CI runs the same checks on Node.js 20 and 22 with local provider mode.
+CI runs the same checks on Node.js 20 and 22. The request-policy suite includes explicit deployment-mode, Host/Origin spoofing, token-principal, and rate-bucket-cap regression cases.
 
 ## Standalone prototype
 
