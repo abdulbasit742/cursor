@@ -22,7 +22,10 @@ npm run build
 
 - Keep provider credentials in server environment variables only.
 - Keep remote AI access disabled by default.
-- Preserve loopback origin handling, explicit HTTPS origin allowlisting, bearer authorization, body/file/project/rate limits, no-store responses, and sanitized public errors.
+- Local AI access must remain explicit, development-only, exact same-origin, and loopback-bound. Never infer trust from `Host` alone or accept missing-Origin local API requests.
+- Preserve credential-free HTTPS origin allowlisting, matching request Host, bearer authorization, body/file/project limits, no-store responses, and sanitized public errors.
+- Rate-limit by the authorized principal. Do not trust `X-Forwarded-For` or another caller-controlled proxy header without a separately designed trusted-proxy boundary.
+- Keep rate state cardinality bounded and expired state removable.
 - Scan provider-bound source for credential-shaped content, but never present the scanner as complete secret detection.
 - Model output remains a proposal. Do not apply, execute, commit, push, publish, or run generated code without explicit review and approval.
 
