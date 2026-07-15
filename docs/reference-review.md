@@ -1,6 +1,6 @@
 # Reference review
 
-Reviewed on 2026-07-15 before hardening the AI request, imported-workspace, preview, export, deployment-mode, and browser-retention boundaries.
+Reviewed on 2026-07-15 before hardening the AI request, imported-workspace, preview, export, deployment-mode, browser-retention, and preview-execution boundaries.
 
 ## Continue
 
@@ -34,9 +34,21 @@ Not adopted: automatic Git commits, command execution, or terminal integration w
 
 ## Microsoft VS Code
 
-Adopted: an opened workspace can be untrusted; execution-capable surfaces need an explicit trust boundary; preview/webview capabilities should be restricted with sandboxing and Content Security Policy. Workspace state has different retention scopes, so durable persistence must not be the implicit default for source or prompts. Exporting a workspace is a separate trust transition requiring review.
+Adopted: an opened workspace can be untrusted; execution-capable surfaces need an explicit trust boundary; preview/webview capabilities should be restricted with sandboxing and Content Security Policy. Workspace state has different retention scopes, so durable persistence must not be the implicit default for source or prompts. Exporting a workspace is a separate trust transition requiring review. Preview JavaScript now follows the same restricted-mode principle: static rendering is available immediately, while execution requires explicit approval for the current content.
 
 Not adopted: extension host, Electron process model, Settings Sync, encrypted secret-storage implementation, or VS Code workspace-trust implementation.
+
+## CodeSandbox Sandpack
+
+Adopted: editor state and the running preview are separate capabilities. The preview remains a dedicated opaque-origin iframe rather than sharing the editor origin, and the execution grant is visible and revocable.
+
+Not adopted: Sandpack packages, remote bundler, template runtime, package installation, or external preview service.
+
+## StackBlitz WebContainers
+
+Adopted: executing project code is a distinct runtime decision rather than an automatic side effect of opening source. The current lightweight editor therefore keeps static preview separate from reviewed JavaScript execution.
+
+Not adopted: Node.js-in-browser runtime, operating-system commands, package manager, process APIs, or cross-origin-isolated deployment requirements.
 
 ## Eclipse Theia
 
@@ -65,5 +77,6 @@ The existing Next.js/Monaco architecture remains. The coherent improvement combi
 - automatic hydration disabled until an expiring session adapter is installed and legacy durable source keys are purged;
 - whole-workspace fail-closed persistence when any file is sensitive, generated, malformed, colliding, or oversized;
 - chat excluded from Zustand persistence, bounded session-only agent history, and five secret-aware 1 MiB snapshots with 12-hour expiry;
-- opaque-origin preview with outbound network, forms, frames, objects, and parent access denied;
+- static-by-default preview, bounded exact-content JavaScript approval, and automatic revocation after code changes;
+- opaque-origin approved-script preview with outbound network, forms, frames, objects, and parent access denied;
 - review-before-apply generated changes, tests, CI, and source-contract scanners.
