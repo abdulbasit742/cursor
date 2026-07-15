@@ -5,9 +5,17 @@ export class RequestPolicyError extends Error {
 }
 
 export interface EditorPolicyEnvironment {
+  NODE_ENV?: string;
+  EDITOR_LOCAL_AI_ENABLED?: string;
   EDITOR_ALLOWED_ORIGINS?: string;
   EDITOR_REMOTE_AI_ENABLED?: string;
   EDITOR_API_TOKEN?: string;
+}
+
+export interface AuthorizedApiAccess {
+  mode: "local" | "remote";
+  origin: string;
+  principal: string;
 }
 
 export function isLoopbackHost(value: unknown): boolean;
@@ -16,7 +24,8 @@ export function authorizeApiRequest(input: {
   origin: string | null;
   authorization: string | null;
   env?: EditorPolicyEnvironment;
-}): { mode: "local" | "remote"; origin: string | null };
+}): AuthorizedApiAccess;
+export function resetRateLimitState(): void;
 export function enforceRateLimit(key: string, now?: number): { remaining: number; resetAt: number };
 export function readBoundedJson(request: Request): Promise<unknown>;
 export function validateChatPayload(value: unknown): {
@@ -42,4 +51,5 @@ export const requestPolicy: Readonly<{
   MAX_PROJECT_CHARS: number;
   RATE_LIMIT: number;
   RATE_WINDOW_MS: number;
+  MAX_RATE_BUCKETS: number;
 }>;
