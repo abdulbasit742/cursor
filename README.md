@@ -10,17 +10,20 @@ A local-first, review-before-apply coding workspace built with Next.js, Monaco E
 - Requests have body, message, file, project, and per-minute limits.
 - Credential-shaped source material is blocked before an OpenAI request is made.
 - Provider output is proposed as code/diffs and requires user review before apply.
-- Live preview runs with `sandbox="allow-scripts"` and no same-origin permission.
-- AI responses are not cached and unexpected server errors are not returned to clients.
+- ZIP imports are preflighted before extraction and replacement: 10 MB archive, 250 entries, 200 text files, 512 KB per file, and 8 MB expanded text are hard limits.
+- Absolute paths, traversal, case collisions, symlinks, hidden secrets, generated dependencies, binary files, invalid UTF-8, and NUL-containing files are rejected or skipped.
+- The user sees an import summary and must explicitly approve replacing the current workspace.
+- Live preview uses an opaque-origin `sandbox="allow-scripts"` iframe. Its CSP disables outbound connections, forms, frames, objects, base URLs, popups, and parent access.
+- AI responses and preview documents are not cached, and unexpected server errors are not returned to clients.
 
 ## Features
 
 - Monaco editor, file explorer, tabs, search, diagnostics, stats, and local source-control checkpoints
-- isolated HTML/CSS/JavaScript live preview
+- isolated HTML/CSS/JavaScript live preview with network disabled
 - local AI assistant fallback
 - optional OpenAI chat and coding-agent plans
 - multi-file diff preview, approval queue, validation, review, confidence, snapshots, and run history
-- ZIP import/export and local templates
+- bounded ZIP import/export and local templates
 - persistent editor settings and local project state
 
 ## Local setup
@@ -68,6 +71,11 @@ npm run build
 
 CI runs the same checks on Node.js 20 and 22 with local provider mode.
 
-## No-install fallback
+## Standalone prototype
 
-`FREE_LOCAL_EDITOR.html` is a standalone demonstration. It is not the maintained Next.js security boundary and should not be presented as a hosted multi-user editor.
+`FREE_LOCAL_EDITOR.html` is now a non-executing retirement notice. The older single-file editor was removed because it could not enforce the maintained application's ZIP preflight, API authorization, or network-denied preview boundary.
+
+## Documentation
+
+- [Reference review](docs/reference-review.md)
+- [Security audit](docs/security-audit.md)
