@@ -4,7 +4,7 @@
 
 These instructions apply to the entire `abdulbasit742/cursor` repository.
 
-Project: **AI Code Editor**, a local-first Next.js / React / TypeScript workspace with Monaco, optional OpenAI-compatible APIs, reviewed ZIP import/export, bounded session-scoped source state, and sandboxed HTML/CSS/JavaScript preview.
+Project: **AI Code Editor**, a local-first Next.js / React / TypeScript workspace with Monaco, optional OpenAI-compatible APIs, reviewed ZIP import/export, bounded session-scoped source state, and static-by-default sandboxed preview.
 
 ## Required commands
 
@@ -62,8 +62,12 @@ npm run build
 
 ## Preview boundary
 
-- Keep the iframe sandbox exactly least-privilege: scripts may run, but same-origin, forms, popups, downloads, navigation, and parent access are not granted.
-- Keep the preview document CSP default-deny with `connect-src 'none'` and no remote resources.
+- Static HTML/CSS preview is the default; do not grant script execution merely because the preview panel is open.
+- Keep standalone preview JavaScript capped at 256 KiB and require explicit approval for the exact current HTML/JavaScript pair.
+- Editing either approved file must revoke approval automatically, and the operator must retain an immediate Stop action.
+- Strip HTML script tags, inline event handlers, refresh metadata, and outbound URL attributes before rendering.
+- Keep the iframe sandbox least-privilege: empty while scripts are paused and exactly `allow-scripts` after approval. Never add same-origin, forms, popups, downloads, navigation, or parent access.
+- Keep the preview document CSP default-deny with `connect-src 'none'`; paused mode must use `script-src 'none'`.
 - Render preview errors with `textContent`, never untrusted HTML.
 - Do not restore executable behavior to `FREE_LOCAL_EDITOR.html`; it is a retirement notice.
 
@@ -81,6 +85,8 @@ npm run build
 - Relevant focused tests pass.
 - Both security scanners pass.
 - Typecheck and production build pass when dependencies are available.
+- Static preview contains no executable runtime before approval.
+- Approval is exact-content, bounded, revocable, and automatically invalidated after HTML/JavaScript edits.
 - Legacy local source state cannot hydrate before the reviewed session adapter.
 - No chat message appears in persisted Zustand state.
 - No new provider endpoint, execution capability, browser permission, or durable persistence surface is introduced without explicit review and documentation.
