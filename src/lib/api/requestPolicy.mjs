@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 const MAX_BODY_BYTES = 600_000;
 const MAX_MESSAGE_CHARS = 4_000;
 const MAX_CODE_CHARS = 200_000;
@@ -6,6 +8,7 @@ const MAX_FILE_CHARS = 120_000;
 const MAX_PROJECT_CHARS = 500_000;
 const RATE_LIMIT = 20;
 const RATE_WINDOW_MS = 60_000;
+const MAX_RATE_BUCKETS = 256;
 
 const rateBuckets = new Map();
 
@@ -22,11 +25,24 @@ function clean(value, maxLength) {
   return String(value ?? "").normalize("NFKC").trim().slice(0, maxLength);
 }
 
+function parseHost(value) {
+  const text = String(value ?? "").trim().toLowerCase();
+  if (!text || /[\s/@\\]/.test(text)) return null;
+  try {
+    return new URL(`http://${text}`).host.toLowerCase();
+  } catch {
+    return null;
+  }
+}
+
 function hostnameFromHost(value) {
-  const host = String(value ?? "").trim().toLowerCase();
+  const host = parseHost(value);
   if (!host) return "";
-  if (host.startsWith("[")) return host.slice(1, host.indexOf("]"));
-  return host.split(":", 1)[0];
+  try {
+    return new URL(`http://${host}`).hostname.replace(/^\[|\]$/g, "").toLowerCase();
+  } catch {
+    return "";
+  }
 }
 
 export function isLoopbackHost(value) {
@@ -34,23 +50,43 @@ export function isLoopbackHost(value) {
   return host === "localhost" || host === "127.0.0.1" || host === "::1";
 }
 
+function parseOrigin(value) {
+  if (!value) return null;
+  let url;
+  try {
+    url = new URL(String(value));
+  } catch {
+    throw new RequestPolicyError("Request origin is invalid", { status: 403, code: "origin_denied" });
+  }
+  if (!["http:", "https:"].includes(url.protocol) || url.username || url.password || url.origin === "null") {
+    throw new RequestPolicyError("Request origin is invalid", { status: 403, code: "origin_denied" });
+  }
+  return url;
+}
+
 function allowedOrigins(env) {
-  return new Set(
-    String(env.EDITOR_ALLOWED_ORIGINS || "")
-      .split(",")
-      .map((value) => value.trim())
-      .filter(Boolean)
-      .map((value) => {
-        try {
-          return new URL(value).origin;
-        } catch {
-          throw new RequestPolicyError("EDITOR_ALLOWED_ORIGINS contains an invalid URL", {
-            status: 500,
-            code: "invalid_configuration",
-          });
-        }
-      }),
-  );
+  const origins = new Set();
+  for (const value of String(env.EDITOR_ALLOWED_ORIGINS || "").split(",")) {
+    const trimmed = value.trim();
+    if (!trimmed) continue;
+    let url;
+    try {
+      url = new URL(trimmed);
+    } catch {
+      throw new RequestPolicyError("EDITOR_ALLOWED_ORIGINS contains an invalid URL", {
+        status: 500,
+        code: "invalid_configuration",
+      });
+    }
+    if (url.username || url.password || (url.protocol !== "https:" && !isLoopbackHost(url.host))) {
+      throw new RequestPolicyError("EDITOR_ALLOWED_ORIGINS must contain credential-free HTTPS origins", {
+        status: 500,
+        code: "invalid_configuration",
+      });
+    }
+    origins.add(url.origin);
+  }
+  return origins;
 }
 
 function parseBearer(value) {
@@ -69,25 +105,31 @@ function safeEqual(left, right) {
   return mismatch === 0;
 }
 
-export function authorizeApiRequest({ host, origin, authorization, env = process.env }) {
-  const loopback = isLoopbackHost(host);
-  let originUrl = null;
-  if (origin) {
-    try {
-      originUrl = new URL(origin);
-    } catch {
-      throw new RequestPolicyError("Request origin is invalid", { status: 403, code: "origin_denied" });
-    }
-  }
+function principalForToken(token) {
+  return `remote:${createHash("sha256").update(token).digest("hex").slice(0, 24)}`;
+}
 
-  if (loopback) {
-    if (originUrl && !isLoopbackHost(originUrl.host)) {
-      throw new RequestPolicyError("Local AI API requests must originate from loopback", {
+export function authorizeApiRequest({ host, origin, authorization, env = process.env }) {
+  const requestHost = parseHost(host);
+  if (!requestHost) {
+    throw new RequestPolicyError("Request host is invalid", { status: 403, code: "host_denied" });
+  }
+  const originUrl = parseOrigin(origin);
+
+  if (isLoopbackHost(requestHost)) {
+    if (env.EDITOR_LOCAL_AI_ENABLED !== "true" || env.NODE_ENV === "production") {
+      throw new RequestPolicyError("Local AI API access is disabled", {
+        status: 403,
+        code: "local_access_disabled",
+      });
+    }
+    if (!originUrl || !isLoopbackHost(originUrl.host) || originUrl.host.toLowerCase() !== requestHost) {
+      throw new RequestPolicyError("Local AI API requests must use the exact loopback origin", {
         status: 403,
         code: "origin_denied",
       });
     }
-    return { mode: "local", origin: originUrl?.origin || null };
+    return { mode: "local", origin: originUrl.origin, principal: `local:${originUrl.origin}` };
   }
 
   if (env.EDITOR_REMOTE_AI_ENABLED !== "true") {
@@ -100,6 +142,12 @@ export function authorizeApiRequest({ host, origin, authorization, env = process
     throw new RequestPolicyError("Request origin is not allowlisted", {
       status: 403,
       code: "origin_denied",
+    });
+  }
+  if (originUrl.host.toLowerCase() !== requestHost) {
+    throw new RequestPolicyError("Request host does not match the allowlisted origin", {
+      status: 403,
+      code: "host_denied",
     });
   }
   const configuredToken = String(env.EDITOR_API_TOKEN || "");
@@ -115,13 +163,37 @@ export function authorizeApiRequest({ host, origin, authorization, env = process
       code: "unauthorized",
     });
   }
-  return { mode: "remote", origin: originUrl.origin };
+  return {
+    mode: "remote",
+    origin: originUrl.origin,
+    principal: principalForToken(configuredToken),
+  };
+}
+
+function pruneRateBuckets(now) {
+  for (const [key, bucket] of rateBuckets) {
+    if (now - bucket.startedAt >= RATE_WINDOW_MS) rateBuckets.delete(key);
+  }
+}
+
+export function resetRateLimitState() {
+  rateBuckets.clear();
 }
 
 export function enforceRateLimit(key, now = Date.now()) {
-  const normalizedKey = clean(key || "anonymous", 200);
+  const normalizedKey = clean(key, 200);
+  if (!normalizedKey) throw new TypeError("rate-limit key is required");
+  if (!Number.isFinite(now) || now < 0) throw new TypeError("rate-limit time is invalid");
+
+  pruneRateBuckets(now);
   const current = rateBuckets.get(normalizedKey);
-  if (!current || now - current.startedAt >= RATE_WINDOW_MS) {
+  if (!current) {
+    if (rateBuckets.size >= MAX_RATE_BUCKETS) {
+      throw new RequestPolicyError("Rate limiter capacity is temporarily exhausted", {
+        status: 503,
+        code: "rate_limiter_busy",
+      });
+    }
     rateBuckets.set(normalizedKey, { startedAt: now, count: 1 });
     return { remaining: RATE_LIMIT - 1, resetAt: now + RATE_WINDOW_MS };
   }
@@ -186,7 +258,7 @@ function validateFileNode(node, state, depth = 0) {
   if (state.count > MAX_FILES) throw new RequestPolicyError("Project contains too many files", { status: 413, code: "payload_too_large" });
   const name = clean(node.name, 180);
   const id = clean(node.id, 180);
-  if (!name || !id || /[\\/\0]/.test(name)) throw new RequestPolicyError("Project contains an unsafe file name");
+  if (!name || !id || /[\/\0]/.test(name)) throw new RequestPolicyError("Project contains an unsafe file name");
   if (node.type !== "file" && node.type !== "folder") throw new RequestPolicyError("Project node type is invalid");
   const content = String(node.content ?? "");
   if (content.length > MAX_FILE_CHARS) throw new RequestPolicyError(`File ${name} is too large`, { status: 413, code: "payload_too_large" });
@@ -256,4 +328,5 @@ export const requestPolicy = Object.freeze({
   MAX_PROJECT_CHARS,
   RATE_LIMIT,
   RATE_WINDOW_MS,
+  MAX_RATE_BUCKETS,
 });
