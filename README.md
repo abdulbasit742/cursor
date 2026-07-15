@@ -1,70 +1,73 @@
 # AI Code Editor
 
-A Cursor-like AI coding workspace starter built with Next.js, Monaco Editor, Zustand, Tailwind CSS, and an OpenAI-compatible API route.
+A local-first, review-before-apply coding workspace built with Next.js, Monaco Editor, Zustand, Tailwind CSS, and an optional OpenAI-compatible provider.
+
+## Safety model
+
+- The editor and local coding agent work on loopback without a provider key.
+- `/api/ai` and `/api/agent` are loopback-only by default.
+- Public AI API access requires explicit enablement, an allowlisted HTTPS origin, and a bearer token of at least 24 characters.
+- Requests have body, message, file, project, and per-minute limits.
+- Credential-shaped source material is blocked before an OpenAI request is made.
+- Provider output is proposed as code/diffs and requires user review before apply.
+- Live preview runs with `sandbox="allow-scripts"` and no same-origin permission.
+- AI responses are not cached and unexpected server errors are not returned to clients.
 
 ## Features
 
-- Monaco code editor
-- File explorer with folders
-- Editor tabs
-- Live HTML/CSS/JS preview
-- AI chat panel
-- Coding Agent panel with plan, multi-file diff preview, and apply flow
-- Agent run history with planned/applied/failed audit trail
-- Automatic project snapshot before applying agent changes
-- Project context builder with repo map, file ranking, and token budget trimming
-- Safe change validation, lightweight code review, repair filtering, confidence scoring
-- Free local coding agent mode that works without an OpenAI API key
-- Agent prompt library with build, fix, refactor, quality, and docs recipes
-- Template gallery with local starters for CRM, finance, healthcare, learning, travel, restaurant, logistics, real estate, and more
-- Import ZIP projects back into the editor
-- Local project snapshots and restore history
-- Project-wide search and quick-open panel
-- Local source-control checkpoint and change summary panel
-- Problems/diagnostics panel for missing assets, TODO markers, risky JavaScript, empty files, and basic bracket checks
-- Project stats panel with file, folder, language, size, and diagnostics summaries
-- Project readiness self-test panel
-- Launch checklist with release score and actionable fixes
-- Persistent Monaco editor settings
-- AI Context Pack panel that copies a prompt-ready trimmed project bundle for other coding agents
-- Apply AI code to the active file
-- Create new files from AI code blocks
-- Mock terminal
-- Local persistence
-- Download project as ZIP
+- Monaco editor, file explorer, tabs, search, diagnostics, stats, and local source-control checkpoints
+- isolated HTML/CSS/JavaScript live preview
+- local AI assistant fallback
+- optional OpenAI chat and coding-agent plans
+- multi-file diff preview, approval queue, validation, review, confidence, snapshots, and run history
+- ZIP import/export and local templates
+- persistent editor settings and local project state
 
-## Setup
+## Local setup
 
-Fast start:
-
-```txt
-Read START_HERE.md
-```
-
-No-install fallback:
-
-```txt
-Open FREE_LOCAL_EDITOR.html directly in your browser.
-```
+Requirements: Node.js 20 or newer.
 
 ```bash
-npm install
+npm ci --ignore-scripts --no-audit --no-fund
 cp .env.example .env.local
 npm run dev
 ```
 
-Open:
+Open `http://localhost:3000`. Leave `OPENAI_API_KEY` blank and keep `AGENT_PROVIDER=local` for the no-provider mode.
 
-```txt
-http://localhost:3000
-```
+## Optional OpenAI provider
 
-## Environment
-
-```txt
-OPENAI_API_KEY=your_openai_api_key_here
+```dotenv
+OPENAI_API_KEY=your-key-in-env-only
 OPENAI_MODEL=gpt-4o-mini
 AGENT_PROVIDER=auto
 ```
 
-If `OPENAI_API_KEY` is missing, the Coding Agent automatically falls back to free local mode. The normal AI Chat still needs an API key for GPT responses.
+Do not paste secrets into editor files. The detection gate covers common credential formats but is not a substitute for reviewing exactly what code is sent to a provider.
+
+## Public deployment boundary
+
+The AI routes remain disabled on non-loopback hosts unless all of these are configured:
+
+```dotenv
+EDITOR_REMOTE_AI_ENABLED=true
+EDITOR_ALLOWED_ORIGINS=https://editor.example.com
+EDITOR_API_TOKEN=use-a-random-secret-with-at-least-24-characters
+```
+
+Public clients must send `Authorization: Bearer <EDITOR_API_TOKEN>` over HTTPS. The current browser UI is intentionally optimized for local use and does not persist an operator token. Add a proper authenticated server session before offering shared hosted access.
+
+## Verification
+
+```bash
+npm run test
+npm run security-check
+npm run typecheck
+npm run build
+```
+
+CI runs the same checks on Node.js 20 and 22 with local provider mode.
+
+## No-install fallback
+
+`FREE_LOCAL_EDITOR.html` is a standalone demonstration. It is not the maintained Next.js security boundary and should not be presented as a hosted multi-user editor.
