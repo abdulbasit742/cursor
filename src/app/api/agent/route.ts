@@ -2,55 +2,80 @@ import { NextRequest, NextResponse } from "next/server";
 import { createAgentFileContext } from "@/lib/agent/fileContext";
 import { runCodingAgent } from "@/lib/agent/multiAgentOrchestrator";
 import { buildRepoMap, summarizeRepoMap } from "@/lib/context/repoMap";
-import type { AgentApiRequest } from "@/lib/agent/types";
+import {
+  authorizeApiRequest,
+  enforceRateLimit,
+  findSensitiveMaterial,
+  flattenProjectContent,
+  readBoundedJson,
+  RequestPolicyError,
+  validateAgentPayload,
+} from "@/lib/api/requestPolicy.mjs";
 import type { FileItem } from "@/store/useStore";
+
+function json(body: unknown, status = 200) {
+  return NextResponse.json(body, {
+    status,
+    headers: {
+      "Cache-Control": "no-store",
+      "X-Content-Type-Options": "nosniff",
+    },
+  });
+}
 
 export async function POST(req: NextRequest) {
   try {
-    const body = (await req.json()) as AgentApiRequest;
+    const access = authorizeApiRequest({
+      host: req.headers.get("host"),
+      origin: req.headers.get("origin"),
+      authorization: req.headers.get("authorization"),
+      env: process.env,
+    });
+    const clientKey = `${access.mode}:agent:${req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "direct"}`;
+    enforceRateLimit(clientKey);
 
-    if (!body.task || typeof body.task !== "string") {
-      return NextResponse.json(
-        { error: "Task is required." },
-        { status: 400 }
-      );
+    const body = validateAgentPayload(await readBoundedJson(req));
+    if (body.provider === "openai" && !process.env.OPENAI_API_KEY) {
+      throw new RequestPolicyError("OpenAI provider is not configured", {
+        status: 503,
+        code: "provider_unavailable",
+      });
     }
-
-    if (!Array.isArray(body.files)) {
-      return NextResponse.json(
-        { error: "Project files are required." },
-        { status: 400 }
-      );
+    const willUseRemoteProvider =
+      body.provider === "openai" || (body.provider === "auto" && Boolean(process.env.OPENAI_API_KEY));
+    if (willUseRemoteProvider) {
+      const findings = findSensitiveMaterial([body.task, ...flattenProjectContent(body.files)]);
+      if (findings.length) {
+        throw new RequestPolicyError(
+          `Remote provider request blocked because sensitive material was detected: ${findings.join(", ")}`,
+          { status: 422, code: "sensitive_material" },
+        );
+      }
     }
 
     const projectFiles = body.files as FileItem[];
     const context = createAgentFileContext({
       files: projectFiles,
-      activeFileId: body.activeFileId || null,
-      task: body.task
+      activeFileId: body.activeFileId,
+      task: body.task,
     });
     const repoSummary = summarizeRepoMap(buildRepoMap(projectFiles));
-
     const result = await runCodingAgent({
       task: body.task,
       files: context.files,
       activeFilePath: context.activeFilePath,
       repoSummary,
-      provider: body.provider || "auto"
+      provider: body.provider,
     });
-
-    return NextResponse.json(result);
+    return json(result);
   } catch (error) {
-    console.error("Agent API error:", error);
-
-    return NextResponse.json(
-      {
-        error:
-          error instanceof Error
-            ? error.message
-            : "Agent failed to generate a plan."
-      },
-      { status: 500 }
+    if (error instanceof RequestPolicyError) {
+      return json({ error: error.message, code: error.code }, error.status);
+    }
+    console.error("Agent API request failed");
+    return json(
+      { error: "Agent request could not be completed. Review the server configuration and try again.", code: "agent_request_failed" },
+      502,
     );
   }
 }
