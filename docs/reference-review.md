@@ -1,6 +1,6 @@
 # Reference review
 
-Reviewed on 2026-07-15 before hardening the AI request, imported-workspace, preview, and deployment-mode boundaries.
+Reviewed on 2026-07-15 before hardening the AI request, imported-workspace, preview, export, and deployment-mode boundaries.
 
 ## Continue
 
@@ -34,7 +34,7 @@ Not adopted: automatic Git commits, command execution, or terminal integration w
 
 ## Microsoft VS Code
 
-Adopted: an opened workspace can be untrusted; execution-capable surfaces need an explicit trust boundary; preview/webview capabilities should be restricted with sandboxing and Content Security Policy.
+Adopted: an opened workspace can be untrusted; execution-capable surfaces need an explicit trust boundary; preview/webview capabilities should be restricted with sandboxing and Content Security Policy. Exporting a workspace is also a trust transition, so the user now reviews what leaves the editor and detected secrets/generated content are excluded.
 
 Not adopted: extension host, Electron process model, or VS Code workspace-trust implementation.
 
@@ -47,7 +47,8 @@ The existing Next.js/Monaco architecture remains. The coherent improvement combi
 - token-derived bounded rate principals rather than forwarded-IP trust;
 - request, project, file, and rate-state limits;
 - credential-shaped source blocking before provider submission;
-- bounded ZIP preflight with path, symlink, encoding, duplicate, and expansion controls;
+- bounded ZIP import preflight with path, symlink, encoding, duplicate, and expansion controls;
 - explicit user approval before workspace replacement;
+- bounded ZIP export preflight with path-collision checks, sensitive/generated exclusions, credential-pattern detection, and explicit summary confirmation;
 - opaque-origin preview with outbound network, forms, frames, objects, and parent access denied;
 - review-before-apply generated changes, tests, CI, and source-contract scanners.
