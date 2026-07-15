@@ -7,10 +7,13 @@ const root = process.cwd();
 const findings = [];
 const required = [
   'src/lib/workspace/importPolicy.mjs',
+  'src/lib/workspace/exportPolicy.mjs',
   'src/lib/workspace/previewPolicy.mjs',
   'src/utils/importProject.ts',
+  'src/utils/downloadProject.ts',
   'src/components/Preview/LivePreview.tsx',
   'tests/import-policy.test.mjs',
+  'tests/export-policy.test.mjs',
   'tests/preview-policy.test.mjs',
 ];
 
@@ -27,6 +30,8 @@ if (!findings.length) {
   const previewPolicy = readFileSync(join(root, 'src/lib/workspace/previewPolicy.mjs'), 'utf8');
   const importer = readFileSync(join(root, 'src/utils/importProject.ts'), 'utf8');
   const importPolicy = readFileSync(join(root, 'src/lib/workspace/importPolicy.mjs'), 'utf8');
+  const exporter = readFileSync(join(root, 'src/utils/downloadProject.ts'), 'utf8');
+  const exportPolicy = readFileSync(join(root, 'src/lib/workspace/exportPolicy.mjs'), 'utf8');
   const standalone = readFileSync(join(root, 'FREE_LOCAL_EDITOR.html'), 'utf8');
 
   if (!/sandbox="allow-scripts"/.test(preview) || /allow-same-origin|allow-forms|allow-popups|allow-top-navigation/.test(preview)) {
@@ -39,6 +44,17 @@ if (!findings.length) {
   for (const token of ['maxArchiveBytes', 'maxEntries', 'maxFiles', 'maxFileBytes', 'maxTotalBytes', 'case-colliding', 'symbolic links']) {
     if (!importPolicy.includes(token)) report('src/lib/workspace/importPolicy.mjs', 'import-boundary', `missing ${token} control`);
   }
+
+  if (!/window\.confirm\(formatExportReview\(plan\)\)/.test(exporter)) {
+    report('src/utils/downloadProject.ts', 'missing-export-review', 'ZIP export needs explicit summary confirmation');
+  }
+  for (const token of ['maxFiles', 'maxFileBytes', 'maxTotalBytes', 'generated-or-vendored', 'sensitive-path', 'credential:', 'case-colliding']) {
+    if (!exportPolicy.includes(token)) report('src/lib/workspace/exportPolicy.mjs', 'export-boundary', `missing ${token} control`);
+  }
+  if (/addFilesToZip\s*\(/.test(exporter)) {
+    report('src/utils/downloadProject.ts', 'raw-export', 'raw recursive ZIP export must not bypass the reviewed plan');
+  }
+
   if (!/Standalone editor retired/.test(standalone) || /srcdoc|eval\s*\(|new\s+Function/.test(standalone)) {
     report('FREE_LOCAL_EDITOR.html', 'legacy-runtime', 'standalone file must remain a non-executing retirement notice');
   }
