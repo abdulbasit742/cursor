@@ -12,6 +12,7 @@
 - AI responses lacked explicit no-store handling.
 - ZIP import had no archive, entry, file, expanded-size, symlink, path-collision, encoding, or binary-content bounds.
 - Imported projects replaced the workspace without an explicit trust review.
+- Project export recursively included every workspace file without size limits, secret filtering, or user review.
 - Previewed JavaScript could make outbound requests because the iframe had no restrictive document CSP.
 - The single-file fallback executed unreviewed project code outside the maintained trust controls.
 
@@ -26,8 +27,10 @@
 - Common private-key and provider-token patterns block remote-provider submission.
 - Sanitized file trees are passed into agent context.
 - ZIP import caps: 10 MB archive, 250 entries, 200 text files, 512 KB per file, and 8 MB expanded text.
-- Absolute paths, traversal, Windows-reserved components, symlinks, case collisions, hidden secrets, generated dependencies, binary extensions, NUL bytes, and invalid UTF-8 are rejected or skipped.
+- Import rejects or skips absolute paths, traversal, Windows-reserved components, symlinks, case collisions, hidden secrets, generated dependencies, binary extensions, NUL bytes, and invalid UTF-8.
 - A summary shows imported/skipped/script file counts before the user approves workspace replacement.
+- ZIP export caps: 200 files, 512 KB per file, 8 MB total text, and depth 20.
+- Export rejects unsafe or case-colliding paths, excludes generated/vendor directories and sensitive filenames, scans robust credential patterns, and always requires summary confirmation.
 - Preview iframe uses only `sandbox="allow-scripts"`, without same-origin/forms/popups/navigation privileges.
 - Preview CSP denies all by default, including connections, forms, frames, objects, and base URLs; only inline preview code and data/blob media are allowed.
 - Provider output remains selected/reviewed before apply and a project snapshot is created before changes.
@@ -38,8 +41,8 @@
 - Development local mode is safe only when the server is actually bound to loopback. HTTP headers cannot prove the network peer address through every proxy/runtime.
 - The in-memory rate limiter is per process and is not sufficient for a horizontally scaled public service.
 - A shared bearer token is an operator safeguard, not multi-user authentication. Add server sessions, users, authorization, revocation, distributed rate limiting, and audit logs before shared hosting.
-- Pattern detection cannot identify every secret or sensitive data item. Users must review provider-bound context.
+- Pattern detection cannot identify every secret or sensitive data item. Users must review provider-bound context and export summaries.
 - Provider data retention and training policies remain external trust decisions.
 - Browser local persistence may contain user source code on the workstation; do not use this editor for secrets or regulated data.
-- JSZip preflight reduces decompression-bomb risk but does not create a separate process or memory sandbox.
+- JSZip import/export processing still allocates accepted entries in the browser. Size caps reduce risk but do not create a separate process or memory sandbox.
 - Preview code can consume CPU in the browser tab. Add a worker/process timeout or disposable runtime before supporting hostile multi-user projects.
