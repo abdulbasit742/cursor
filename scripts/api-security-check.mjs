@@ -28,19 +28,28 @@ if (!findings.length) {
   const agent = readFileSync(join(root, "src/app/api/agent/route.ts"), "utf8");
   const preview = readFileSync(join(root, "src/components/Preview/LivePreview.tsx"), "utf8");
   for (const [label, pattern] of [
+    ["explicit local development mode", /EDITOR_LOCAL_AI_ENABLED\s*!==\s*["']true["']/],
+    ["production local denial", /NODE_ENV\s*===\s*["']production["']/],
+    ["exact host-origin match", /originUrl\.host\.toLowerCase\(\)\s*!==\s*requestHost/],
     ["remote disabled by default", /EDITOR_REMOTE_AI_ENABLED\s*!==\s*["']true["']/],
-    ["origin allowlist", /EDITOR_ALLOWED_ORIGINS/],
+    ["HTTPS origin allowlist", /credential-free HTTPS origins/],
     ["bearer token", /EDITOR_API_TOKEN/],
+    ["token-derived principal", /createHash\(["']sha256["']\)/],
     ["request size cap", /MAX_BODY_BYTES\s*=\s*600_000/],
     ["project size cap", /MAX_PROJECT_CHARS\s*=\s*500_000/],
     ["rate limit", /RATE_LIMIT\s*=\s*20/],
+    ["rate bucket cap", /MAX_RATE_BUCKETS\s*=\s*256/],
+    ["expired bucket pruning", /pruneRateBuckets/],
     ["sensitive material gate", /findSensitiveMaterial/],
   ]) {
     if (!pattern.test(policy)) report("src/lib/api/requestPolicy.mjs", "policy-contract", `${label} is missing`);
   }
   for (const [file, text] of [["src/app/api/ai/route.ts", ai], ["src/app/api/agent/route.ts", agent]]) {
-    for (const symbol of ["authorizeApiRequest", "enforceRateLimit", "readBoundedJson", "RequestPolicyError"]) {
+    for (const symbol of ["authorizeApiRequest", "enforceRateLimit", "readBoundedJson", "RequestPolicyError", "access.principal"]) {
       if (!text.includes(symbol)) report(file, "route-contract", `${symbol} is not wired`);
+    }
+    if (/x-forwarded-for/i.test(text)) {
+      report(file, "untrusted-proxy-header", "rate limiting must not trust X-Forwarded-For");
     }
     if (/error instanceof Error\s*\?\s*error\.message/.test(text)) {
       report(file, "error-leak", "internal exception messages must not be returned");
