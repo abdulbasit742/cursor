@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createAgentFileContext } from "@/lib/agent/fileContext";
 import { runCodingAgent } from "@/lib/agent/multiAgentOrchestrator";
 import { buildRepoMap, summarizeRepoMap } from "@/lib/context/repoMap";
+import { canonicalizeProjectTree, ProjectTreePolicyError } from "@/lib/api/projectTreePolicy.mjs";
 import {
   authorizeApiRequest,
   enforceRateLimit,
@@ -11,7 +12,6 @@ import {
   RequestPolicyError,
   validateAgentPayload,
 } from "@/lib/api/requestPolicy.mjs";
-import type { FileItem } from "@/store/useStore";
 
 function json(body: unknown, status = 200) {
   return NextResponse.json(body, {
@@ -20,21 +20,6 @@ function json(body: unknown, status = 200) {
       "Cache-Control": "no-store",
       "X-Content-Type-Options": "nosniff",
     },
-  });
-}
-
-function sanitizeFileTree(nodes: unknown[]): FileItem[] {
-  return nodes.map((value) => {
-    const node = value as Record<string, unknown>;
-    return {
-      id: String(node.id),
-      name: String(node.name),
-      language: String(node.language || "plaintext"),
-      content: String(node.content || ""),
-      type: node.type === "folder" ? "folder" : "file",
-      children: Array.isArray(node.children) ? sanitizeFileTree(node.children) : undefined,
-      isOpen: Boolean(node.isOpen),
-    };
   });
 }
 
@@ -49,6 +34,8 @@ export async function POST(req: NextRequest) {
     enforceRateLimit(`${access.principal}:agent`);
 
     const body = validateAgentPayload(await readBoundedJson(req));
+    const project = canonicalizeProjectTree(body.files, body.activeFileId);
+
     if (body.provider === "openai" && !process.env.OPENAI_API_KEY) {
       throw new RequestPolicyError("OpenAI provider is not configured", {
         status: 503,
@@ -58,7 +45,7 @@ export async function POST(req: NextRequest) {
     const willUseRemoteProvider =
       body.provider === "openai" || (body.provider === "auto" && Boolean(process.env.OPENAI_API_KEY));
     if (willUseRemoteProvider) {
-      const findings = findSensitiveMaterial([body.task, ...flattenProjectContent(body.files)]);
+      const findings = findSensitiveMaterial([body.task, ...flattenProjectContent(project.files)]);
       if (findings.length) {
         throw new RequestPolicyError(
           `Remote provider request blocked because sensitive material was detected: ${findings.join(", ")}`,
@@ -67,13 +54,12 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const projectFiles = sanitizeFileTree(body.files);
     const context = createAgentFileContext({
-      files: projectFiles,
-      activeFileId: body.activeFileId,
+      files: project.files,
+      activeFileId: project.activeFileId,
       task: body.task,
     });
-    const repoSummary = summarizeRepoMap(buildRepoMap(projectFiles));
+    const repoSummary = summarizeRepoMap(buildRepoMap(project.files));
     const result = await runCodingAgent({
       task: body.task,
       files: context.files,
@@ -85,6 +71,9 @@ export async function POST(req: NextRequest) {
   } catch (error) {
     if (error instanceof RequestPolicyError) {
       return json({ error: error.message, code: error.code }, error.status);
+    }
+    if (error instanceof ProjectTreePolicyError) {
+      return json({ error: error.message, code: error.code }, 400);
     }
     console.error("Agent API request failed");
     return json(
