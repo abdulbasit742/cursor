@@ -46,8 +46,7 @@ export async function POST(req: NextRequest) {
       authorization: req.headers.get("authorization"),
       env: process.env,
     });
-    const clientKey = `${access.mode}:agent:${req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "direct"}`;
-    enforceRateLimit(clientKey);
+    enforceRateLimit(`${access.principal}:agent`);
 
     const body = validateAgentPayload(await readBoundedJson(req));
     if (body.provider === "openai" && !process.env.OPENAI_API_KEY) {
