@@ -16,6 +16,7 @@
 - Previewed JavaScript could make outbound requests because the iframe had no restrictive document CSP.
 - The single-file fallback executed unreviewed project code outside the maintained trust controls.
 - Zustand persisted the complete workspace, open files, and chat indefinitely in `localStorage`.
+- Legacy Zustand state could hydrate before a client-side storage adapter was installed.
 - Project history retained up to 30 full workspace copies without expiry, secret checks, or a storage-size cap.
 - Agent prompt history retained up to 200 entries across browser restarts.
 - Destructive operations claimed to have a rollback snapshot even when browser storage failed or unsafe content should not have been retained.
@@ -30,7 +31,9 @@
 - JSON content-type, 600 KB body cap, 4,000-character prompt cap, per-file/project limits, file count/depth/name validation, and 20 requests per minute per authorized principal.
 - Common private-key and provider-token patterns block remote-provider submission.
 - Sanitized file trees are passed into agent context.
-- Main editor/project/chat persistence is rerouted to `sessionStorage`; the previous durable Zustand key is removed at startup.
+- Zustand automatic hydration is disabled. The reviewed expiring session adapter is installed first, legacy durable keys are deleted, and only then is state explicitly rehydrated.
+- Workspace persistence is limited to 4 MiB and 12 hours in `sessionStorage`. Any sensitive/generated path, credential-shaped content, malformed tree, case collision, or size violation blocks the entire source tree from persistence.
+- Chat messages are excluded from the main persisted state. If source persistence is blocked, only low-sensitivity editor/UI preferences remain.
 - Agent prompt history is session-only and capped at 50 entries; its previous durable key is removed.
 - Project snapshots are session-only, capped at 5, limited to 1 MiB, and expire after 12 hours.
 - Snapshot creation reuses the reviewed export path/credential policy and is blocked if any sensitive/generated entry would be excluded.
@@ -54,6 +57,7 @@
 - Pattern detection cannot identify every secret or sensitive data item. Users must review provider-bound context and export summaries.
 - Provider data retention and training policies remain external trust decisions.
 - `sessionStorage` is retention minimization, not encryption or process isolation. Same-origin scripts and browser extensions may access current-session source and prompts.
+- A secret not recognized by pattern detection can still be retained for the current session; explicit safe export and manual review remain required for durable sharing.
 - Other low-sensitivity convenience modules may retain UI metadata in browser storage; they must not be expanded to raw source, prompts, credentials, or regulated data without a separate review.
 - JSZip import/export processing still allocates accepted entries in the browser. Size caps reduce risk but do not create a separate process or memory sandbox.
 - Preview code can consume CPU in the browser tab. Add a worker/process timeout or disposable runtime before supporting hostile multi-user projects.
