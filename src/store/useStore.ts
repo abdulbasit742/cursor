@@ -2,6 +2,7 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { addToTree, findFile, mapTree, removeFromTree } from "@/utils/fileTree";
 import { getLanguageFromName } from "@/utils/language";
+import { prepareEditorStateForPersistence } from "@/lib/workspace/persistencePolicy.mjs";
 
 export interface FileItem {
   id: string;
@@ -124,7 +125,7 @@ const defaultFiles: FileItem[] = [
   </main>
   <script src="script.js"></script>
 </body>
-</html>`
+</html>`,
       },
       {
         id: "file-style",
@@ -181,7 +182,7 @@ button {
   color: #082f49;
   font-weight: 800;
   cursor: pointer;
-}`
+}`,
       },
       {
         id: "file-script",
@@ -192,9 +193,9 @@ button {
   alert("Hello from your AI Code Editor starter.");
 }
 
-console.log("Preview loaded.");`
-      }
-    ]
+console.log("Preview loaded.");`,
+      },
+    ],
   },
   {
     id: "file-readme",
@@ -205,16 +206,15 @@ console.log("Preview loaded.");`
 
 This is a Cursor-like coding workspace starter.
 
-Use the Explorer, Editor, AI Chat, Preview, and Terminal panels to build small web projects.`
-  }
+Use the Explorer, Editor, AI Chat, Preview, and Terminal panels to build small web projects.`,
+  },
 ];
 
 const welcomeMessage: ChatMessage = {
   id: "welcome",
   role: "assistant",
-  content:
-    "Hi Abdul Basit. Ask me to write, fix, explain, or improve code. If I return a code block, you can apply it to the active file.",
-  timestamp: new Date().toISOString()
+  content: "Hi Abdul Basit. Ask me to write, fix, explain, or improve code. If I return a code block, you can apply it to the active file.",
+  timestamp: new Date().toISOString(),
 };
 
 function firstFile(files: FileItem[]): FileItem | null {
@@ -223,7 +223,6 @@ function firstFile(files: FileItem[]): FileItem | null {
     const child: FileItem | null = firstFile(file.children || []);
     if (child) return child;
   }
-
   return null;
 }
 
@@ -253,76 +252,43 @@ const useStore = create<StoreState>()(
 
       setFiles: (files) =>
         set((state) => {
-          const activeFile =
-            state.activeFile && findFile(files, state.activeFile.id);
-
-          const retainedTabs = state.openTabs.filter((tabId) =>
-            Boolean(findFile(files, tabId))
-          );
+          const activeFile = state.activeFile && findFile(files, state.activeFile.id);
+          const retainedTabs = state.openTabs.filter((tabId) => Boolean(findFile(files, tabId)));
           const nextActive = activeFile || firstFile(files);
-          const openTabs =
-            nextActive && !retainedTabs.includes(nextActive.id)
-              ? [nextActive.id, ...retainedTabs]
-              : retainedTabs;
-
-          return {
-            files,
-            activeFile: nextActive,
-            openTabs
-          };
+          const openTabs = nextActive && !retainedTabs.includes(nextActive.id)
+            ? [nextActive.id, ...retainedTabs]
+            : retainedTabs;
+          return { files, activeFile: nextActive, openTabs };
         }),
 
       setActiveFile: (file) => {
         if (file.type !== "file") return;
-
         set((state) => ({
           activeFile: file,
-          openTabs: state.openTabs.includes(file.id)
-            ? state.openTabs
-            : [...state.openTabs, file.id]
+          openTabs: state.openTabs.includes(file.id) ? state.openTabs : [...state.openTabs, file.id],
         }));
       },
 
       updateEditorSettings: (settings) =>
-        set((state) => ({
-          editorSettings: {
-            ...state.editorSettings,
-            ...settings
-          }
-        })),
-
-      resetEditorSettings: () =>
-        set({
-          editorSettings: defaultEditorSettings
-        }),
+        set((state) => ({ editorSettings: { ...state.editorSettings, ...settings } })),
+      resetEditorSettings: () => set({ editorSettings: defaultEditorSettings }),
 
       updateFileContent: (id, content) =>
         set((state) => {
-          const files = mapTree(state.files, (file) =>
-            file.id === id ? { ...file, content } : file
-          );
-
+          const files = mapTree(state.files, (file) => file.id === id ? { ...file, content } : file);
           return {
             files,
-            activeFile:
-              state.activeFile?.id === id
-                ? { ...state.activeFile, content }
-                : state.activeFile
+            activeFile: state.activeFile?.id === id ? { ...state.activeFile, content } : state.activeFile,
           };
         }),
 
       replaceActiveFileContent: (content) =>
         set((state) => {
           if (!state.activeFile) return state;
-
           const files = mapTree(state.files, (file) =>
-            file.id === state.activeFile?.id ? { ...file, content } : file
+            file.id === state.activeFile?.id ? { ...file, content } : file,
           );
-
-          return {
-            files,
-            activeFile: { ...state.activeFile, content }
-          };
+          return { files, activeFile: { ...state.activeFile, content } };
         }),
 
       addFile: (file, parentId) =>
@@ -332,126 +298,71 @@ const useStore = create<StoreState>()(
             name: file.name,
             language: file.language || getLanguageFromName(file.name),
             content: file.content || "",
-            type: "file"
+            type: "file",
           };
-
           return {
             files: addToTree(state.files, parentId, newFile),
             activeFile: newFile,
-            openTabs: state.openTabs.includes(newFile.id)
-              ? state.openTabs
-              : [...state.openTabs, newFile.id]
+            openTabs: state.openTabs.includes(newFile.id) ? state.openTabs : [...state.openTabs, newFile.id],
           };
         }),
 
       addFolder: (name, parentId) =>
-        set((state) => {
-          const folder: FileItem = {
+        set((state) => ({
+          files: addToTree(state.files, parentId, {
             id: `folder-${Date.now()}`,
             name,
             language: "plaintext",
             content: "",
             type: "folder",
             isOpen: true,
-            children: []
-          };
-
-          return {
-            files: addToTree(state.files, parentId, folder)
-          };
-        }),
+            children: [],
+          }),
+        })),
 
       deleteFile: (id) =>
         set((state) => {
           const files = removeFromTree(state.files, id);
           const openTabs = state.openTabs.filter((tabId) => tabId !== id);
-          const nextActive =
-            state.activeFile?.id === id
-              ? findFile(files, openTabs[openTabs.length - 1] || "") || firstFile(files)
-              : state.activeFile;
-
-          return {
-            files,
-            openTabs,
-            activeFile: nextActive
-          };
+          const nextActive = state.activeFile?.id === id
+            ? findFile(files, openTabs[openTabs.length - 1] || "") || firstFile(files)
+            : state.activeFile;
+          return { files, openTabs, activeFile: nextActive };
         }),
 
       toggleFolder: (id) =>
         set((state) => ({
           files: mapTree(state.files, (file) =>
-            file.id === id && file.type === "folder"
-              ? { ...file, isOpen: !file.isOpen }
-              : file
-          )
+            file.id === id && file.type === "folder" ? { ...file, isOpen: !file.isOpen } : file,
+          ),
         })),
 
       closeTab: (id) =>
         set((state) => {
           const openTabs = state.openTabs.filter((tabId) => tabId !== id);
-          const nextActive =
-            state.activeFile?.id === id
-              ? findFile(state.files, openTabs[openTabs.length - 1] || "") || null
-              : state.activeFile;
-
-          return {
-            openTabs,
-            activeFile: nextActive
-          };
+          const nextActive = state.activeFile?.id === id
+            ? findFile(state.files, openTabs[openTabs.length - 1] || "") || null
+            : state.activeFile;
+          return { openTabs, activeFile: nextActive };
         }),
 
-      addChatMessage: (message) =>
-        set((state) => ({
-          chatMessages: [...state.chatMessages, message]
-        })),
-
-      clearChat: () =>
-        set({
-          chatMessages: [welcomeMessage]
-        }),
-
-      toggleSidebar: () =>
-        set((state) => ({ isSidebarOpen: !state.isSidebarOpen })),
-
+      addChatMessage: (message) => set((state) => ({ chatMessages: [...state.chatMessages, message] })),
+      clearChat: () => set({ chatMessages: [welcomeMessage] }),
+      toggleSidebar: () => set((state) => ({ isSidebarOpen: !state.isSidebarOpen })),
       toggleChat: () => set((state) => ({ isChatOpen: !state.isChatOpen })),
-
       toggleAgent: () => set((state) => ({ isAgentOpen: !state.isAgentOpen })),
-
-      toggleTerminal: () =>
-        set((state) => ({ isTerminalOpen: !state.isTerminalOpen })),
-
-      togglePreview: () =>
-        set((state) => ({ isPreviewOpen: !state.isPreviewOpen })),
-
-      toggleTemplates: () =>
-        set((state) => ({ isTemplatesOpen: !state.isTemplatesOpen })),
-
-      toggleHistory: () =>
-        set((state) => ({ isHistoryOpen: !state.isHistoryOpen })),
-
-      toggleSearch: () =>
-        set((state) => ({ isSearchOpen: !state.isSearchOpen })),
-
-      toggleSourceControl: () =>
-        set((state) => ({ isSourceControlOpen: !state.isSourceControlOpen })),
-
-      toggleProblems: () =>
-        set((state) => ({ isProblemsOpen: !state.isProblemsOpen })),
-
-      toggleSettings: () =>
-        set((state) => ({ isSettingsOpen: !state.isSettingsOpen })),
-
-      toggleStats: () =>
-        set((state) => ({ isStatsOpen: !state.isStatsOpen })),
-
-      toggleContext: () =>
-        set((state) => ({ isContextOpen: !state.isContextOpen })),
-
-      toggleReadiness: () =>
-        set((state) => ({ isReadinessOpen: !state.isReadinessOpen })),
-
-      toggleLaunchChecklist: () =>
-        set((state) => ({ isLaunchChecklistOpen: !state.isLaunchChecklistOpen })),
+      toggleTerminal: () => set((state) => ({ isTerminalOpen: !state.isTerminalOpen })),
+      togglePreview: () => set((state) => ({ isPreviewOpen: !state.isPreviewOpen })),
+      toggleTemplates: () => set((state) => ({ isTemplatesOpen: !state.isTemplatesOpen })),
+      toggleHistory: () => set((state) => ({ isHistoryOpen: !state.isHistoryOpen })),
+      toggleSearch: () => set((state) => ({ isSearchOpen: !state.isSearchOpen })),
+      toggleSourceControl: () => set((state) => ({ isSourceControlOpen: !state.isSourceControlOpen })),
+      toggleProblems: () => set((state) => ({ isProblemsOpen: !state.isProblemsOpen })),
+      toggleSettings: () => set((state) => ({ isSettingsOpen: !state.isSettingsOpen })),
+      toggleStats: () => set((state) => ({ isStatsOpen: !state.isStatsOpen })),
+      toggleContext: () => set((state) => ({ isContextOpen: !state.isContextOpen })),
+      toggleReadiness: () => set((state) => ({ isReadinessOpen: !state.isReadinessOpen })),
+      toggleLaunchChecklist: () => set((state) => ({ isLaunchChecklistOpen: !state.isLaunchChecklistOpen })),
 
       resetProject: () =>
         set({
@@ -468,35 +379,16 @@ const useStore = create<StoreState>()(
           isStatsOpen: false,
           isContextOpen: false,
           isReadinessOpen: false,
-          isLaunchChecklistOpen: false
-        })
+          isLaunchChecklistOpen: false,
+        }),
     }),
     {
-      name: "ai-code-editor-storage",
-      partialize: (state) => ({
-        files: state.files,
-        activeFile: state.activeFile,
-        openTabs: state.openTabs,
-        chatMessages: state.chatMessages,
-        editorSettings: state.editorSettings,
-        isSidebarOpen: state.isSidebarOpen,
-        isChatOpen: state.isChatOpen,
-        isAgentOpen: state.isAgentOpen,
-        isTemplatesOpen: state.isTemplatesOpen,
-        isHistoryOpen: state.isHistoryOpen,
-        isSearchOpen: state.isSearchOpen,
-        isSourceControlOpen: state.isSourceControlOpen,
-        isProblemsOpen: state.isProblemsOpen,
-        isSettingsOpen: state.isSettingsOpen,
-        isStatsOpen: state.isStatsOpen,
-        isContextOpen: state.isContextOpen,
-        isReadinessOpen: state.isReadinessOpen,
-        isLaunchChecklistOpen: state.isLaunchChecklistOpen,
-        isTerminalOpen: state.isTerminalOpen,
-        isPreviewOpen: state.isPreviewOpen
-      })
-    }
-  )
+      name: "ai-code-editor-private-session-v2",
+      skipHydration: true,
+      version: 2,
+      partialize: (state) => prepareEditorStateForPersistence(state) as StoreState,
+    },
+  ),
 );
 
 export default useStore;
