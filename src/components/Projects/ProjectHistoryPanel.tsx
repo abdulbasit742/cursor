@@ -25,7 +25,10 @@ export function ProjectHistoryPanel({ onRestore }: ProjectHistoryPanelProps) {
     if (!q) return snapshots;
 
     return snapshots.filter((snapshot) =>
-      [snapshot.label, snapshot.source, snapshot.createdAt].join(" ").toLowerCase().includes(q)
+      [snapshot.label, snapshot.source, snapshot.createdAt]
+        .join(" ")
+        .toLowerCase()
+        .includes(q),
     );
   }, [snapshots, query]);
 
@@ -40,13 +43,22 @@ export function ProjectHistoryPanel({ onRestore }: ProjectHistoryPanelProps) {
         <div className="flex items-center justify-between gap-3">
           <div>
             <h2 className="text-sm font-semibold">Project History</h2>
-            <p className="text-xs text-gray-400">Restore local snapshots before imports/templates</p>
+            <p className="text-xs text-gray-400">
+              Up to 5 session-only snapshots, each expiring after 12 hours
+            </p>
           </div>
 
-          <button onClick={handleClear} className="rounded bg-red-600 px-3 py-1 text-xs text-white">
+          <button
+            onClick={handleClear}
+            className="rounded bg-red-600 px-3 py-1 text-xs text-white"
+          >
             Clear
           </button>
         </div>
+
+        <p className="mt-2 rounded border border-amber-700/60 bg-amber-950/30 p-2 text-xs text-amber-200">
+          Snapshots are cleared when this browser session closes. A snapshot is blocked if the workspace contains credentials, sensitive paths, generated folders, or more than 1 MiB of stored project state.
+        </p>
 
         <input
           value={query}
@@ -59,22 +71,31 @@ export function ProjectHistoryPanel({ onRestore }: ProjectHistoryPanelProps) {
       <div className="flex-1 overflow-y-auto p-3">
         {filteredSnapshots.length === 0 ? (
           <div className="rounded border border-dashed border-[#3e3e3e] p-8 text-center text-sm text-gray-400">
-            No snapshots yet.
+            No safe session snapshots yet.
           </div>
         ) : (
           <div className="space-y-3">
             {filteredSnapshots.map((snapshot) => (
-              <article key={snapshot.id} className="rounded border border-[#3e3e3e] bg-[#1e1e1e] p-3">
+              <article
+                key={snapshot.id}
+                className="rounded border border-[#3e3e3e] bg-[#1e1e1e] p-3"
+              >
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <h3 className="truncate text-sm font-semibold">{snapshot.label}</h3>
+                    <h3 className="truncate text-sm font-semibold">
+                      {snapshot.label}
+                    </h3>
                     <p className="mt-1 text-xs text-gray-500">
-                      {snapshot.fileCount} files - {snapshot.source} -{" "}
-                      {new Date(snapshot.createdAt).toLocaleString()}
+                      {snapshot.fileCount} files · {snapshot.source} · {Math.ceil(snapshot.totalBytes / 1024)} KiB
+                    </p>
+                    <p className="mt-1 text-xs text-gray-500">
+                      Expires {new Date(snapshot.expiresAt).toLocaleString()}
                     </p>
                   </div>
 
-                  <span className="rounded bg-[#37373d] px-2 py-1 text-xs">{snapshot.source}</span>
+                  <span className="rounded bg-[#37373d] px-2 py-1 text-xs">
+                    session
+                  </span>
                 </div>
 
                 <div className="mt-3 flex gap-2">
