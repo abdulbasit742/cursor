@@ -4,7 +4,7 @@
 
 These instructions apply to the entire `abdulbasit742/cursor` repository.
 
-Project: **AI Code Editor**, a local-first Next.js / React / TypeScript workspace with Monaco, optional OpenAI-compatible APIs, reviewed ZIP import/export, session-scoped source state, and sandboxed HTML/CSS/JavaScript preview.
+Project: **AI Code Editor**, a local-first Next.js / React / TypeScript workspace with Monaco, optional OpenAI-compatible APIs, reviewed ZIP import/export, bounded session-scoped source state, and sandboxed HTML/CSS/JavaScript preview.
 
 ## Required commands
 
@@ -31,8 +31,11 @@ npm run build
 
 ## Browser persistence boundary
 
-- Workspace files, tabs, chat messages, agent prompts, and project snapshots must remain session-scoped by default.
-- Preserve `WorkspacePersistenceBoundary`, the session-only Zustand storage adapter, and purge of legacy durable source/prompt keys.
+- Disable automatic Zustand hydration. Install the reviewed session adapter, purge legacy durable keys, and only then explicitly rehydrate.
+- Persist workspace source only when the complete tree passes path, collision, size, generated-content, and credential checks. Never persist a silently filtered partial project.
+- Keep the serialized workspace cap at 4 MiB and expiry at 12 hours unless a separately reviewed migration tightens them.
+- Chat messages must remain memory-only in the main editor store. Agent history may be session-only only under its separate entry cap.
+- Preserve `WorkspacePersistenceBoundary`, `persistencePolicy.mjs`, and purge of legacy durable source/prompt keys.
 - Do not write raw source, prompts, credentials, or complete workspace trees to `localStorage`, IndexedDB, Cache Storage, cookies, URLs, or analytics.
 - Snapshots must reuse the reviewed export path/credential policy, remain capped at 5 and 1 MiB each, and expire after 12 hours.
 - Never silently create an incomplete snapshot by excluding sensitive/generated entries. Block the snapshot and the pending destructive action.
@@ -78,5 +81,7 @@ npm run build
 - Relevant focused tests pass.
 - Both security scanners pass.
 - Typecheck and production build pass when dependencies are available.
+- Legacy local source state cannot hydrate before the reviewed session adapter.
+- No chat message appears in persisted Zustand state.
 - No new provider endpoint, execution capability, browser permission, or durable persistence surface is introduced without explicit review and documentation.
 - Residual risks and deployment assumptions remain accurate.
