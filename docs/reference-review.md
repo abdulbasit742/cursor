@@ -36,7 +36,13 @@ Not adopted: automatic Git commits, command execution, or terminal integration w
 
 Adopted: an opened workspace can be untrusted; execution-capable surfaces need an explicit trust boundary; preview/webview capabilities should be restricted with sandboxing and Content Security Policy. Workspace state has different retention scopes, so durable persistence must not be the implicit default for source or prompts. Exporting a workspace is a separate trust transition requiring review.
 
-Not adopted: extension host, Electron process model, Settings Sync, or VS Code workspace-trust implementation.
+Not adopted: extension host, Electron process model, Settings Sync, encrypted secret-storage implementation, or VS Code workspace-trust implementation.
+
+## Eclipse Theia
+
+Adopted: workspace restoration and UI preferences are separate concerns. The editor restores only reviewed, bounded project state after the browser storage boundary is installed, while low-sensitivity UI preferences can survive when source persistence is blocked.
+
+Not adopted: backend filesystem service, extension host, preference scopes, or server-side workspace storage.
 
 ## JupyterLab
 
@@ -56,7 +62,8 @@ The existing Next.js/Monaco architecture remains. The coherent improvement combi
 - bounded ZIP import preflight with path, symlink, encoding, duplicate, and expansion controls;
 - explicit user approval before workspace replacement;
 - bounded ZIP export preflight with path-collision checks, sensitive/generated exclusions, credential-pattern detection, and explicit summary confirmation;
-- session-only workspace/chat/prompt retention with legacy durable-state purge;
-- five secret-aware 1 MiB snapshots with 12-hour expiry and fail-closed destructive actions;
+- automatic hydration disabled until an expiring session adapter is installed and legacy durable source keys are purged;
+- whole-workspace fail-closed persistence when any file is sensitive, generated, malformed, colliding, or oversized;
+- chat excluded from Zustand persistence, bounded session-only agent history, and five secret-aware 1 MiB snapshots with 12-hour expiry;
 - opaque-origin preview with outbound network, forms, frames, objects, and parent access denied;
 - review-before-apply generated changes, tests, CI, and source-contract scanners.
